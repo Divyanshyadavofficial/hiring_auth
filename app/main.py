@@ -8,7 +8,7 @@ from app.routes.auth import auth_router
 from app.routes.admin import admin_router
 from app.routes.jobs import jobs_router
 
-app = FastAPI()
+app = FastAPI(docs_url=None,redoc_url=None)
 
 @app.on_event("startup")
 async def startup():
