@@ -1,8 +1,8 @@
 from fastapi import APIRouter,HTTPException,Depends
-from app.models.models import User,UserResponse,UserCreate
+from app.models.user import User,UserResponse,UserCreate
 from app.db import get_db
-from app.models_db.models_db import User as UserDB
-from app.models.models import updated_user
+from app.models_db.user import User as UserDB
+from app.models.user import updated_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.security import hash_password
 from sqlalchemy import select

@@ -1,6 +1,6 @@
 from datetime import datetime,timedelta
 from jose import JWTError,jwt
-from app.models_db.models_db import BlacklistToken
+from app.models_db.user import BlacklistToken
 from sqlalchemy import select
 import uuid
 from app.core.config import settings

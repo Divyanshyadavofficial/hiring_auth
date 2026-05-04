@@ -1,4 +1,4 @@
-from sqlalchemy.orm import DeclarativeBase,Mapped,mapped_column
+from sqlalchemy.orm import DeclarativeBase,Mapped,mapped_column,relationship
 from sqlalchemy import String
 
 
@@ -14,6 +14,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(nullable=False,unique=True)
     password: Mapped[str] = mapped_column(nullable=False)
     role:Mapped[str] = mapped_column(String,default="candidate")
+
+    jobs = relationship("Job",back_populates="recruiter")
+    applications = relationship("Application",back_populates="candidate")
+    
 
     
 class BlacklistToken(Base):

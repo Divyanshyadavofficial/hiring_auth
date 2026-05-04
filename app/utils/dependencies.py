@@ -2,7 +2,7 @@ from fastapi import Depends,HTTPException,status
 from fastapi.security import HTTPBearer
 from app.utils.jwt import verify_token
 from app.db import get_db
-from app.models_db.models_db import User as UserDB
+from app.models_db.user import User as UserDB
 
 security = HTTPBearer()
 

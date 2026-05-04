@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from app.routes.users import user_router
-from app.models_db.models_db import User as UserDB
-from app.models.models import User
-from app.models_db.models_db import Base
+from app.models_db.user import User as UserDB
+from app.models.user import User
+from app.models_db.user import Base
 from app.db import engine
 from app.routes.auth import auth_router
 from app.routes.admin import admin_router

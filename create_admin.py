@@ -2,7 +2,7 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.db import engine
-from app.models_db.models_db import User as UserDB
+from app.models_db.user import User as UserDB
 from app.utils.security import hash_password
 from sqlalchemy import select
 from app.core.config import settings

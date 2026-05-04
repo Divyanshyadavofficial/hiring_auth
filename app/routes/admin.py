@@ -3,7 +3,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.utils.dependencies import require_roles
-from app.models_db.models_db import User as UserDB
+from app.models_db.user import User as UserDB
 
 
 
