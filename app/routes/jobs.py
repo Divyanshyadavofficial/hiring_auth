@@ -36,20 +36,51 @@ async def get_jobs(db: AsyncSession = Depends(get_db)):
     return jobs
 
 
-@jobs_router.post("/apply")
+@jobs_router.post("/{job_id}/apply")
 async def apply_job(
-    data: ApplyRequest,
+    job_id: int,
     db: AsyncSession = Depends(get_db),
     current_user = Depends(require_roles(["candidate"]))
 ):
+    job = await db.get(Job,job_id)
+    if not job:
+        raise HTTPException(status_code=404,detail="Job not found")
+    
+    result = await db.execute(
+        select(Application).where(
+            Application.user_id == current_user["user_id"],
+            Application.job_id ==job_id
+        )
+
+    )
+    existing = result.scalar_one_or_none()
+    if existing :
+        raise HTTPException(status_code=400,detail="Already applied")
     application = Application(
         user_id = current_user["user_id"],
-        job_id=data.job_id
+        job_id = job_id,
+        status = "pending"
     )
     db.add(application)
     await db.commit()
-
     return {"message":"Applied successfully"}
 
 
+@jobs_router.get("/{job_id}/applications")
+async def get_job_applications(
+    job_id:int,
+    db:AsyncSession = Depends(get_db),
+    current_user = Depends(require_roles(["admin","recruiter"]))
+):
+    job = await db.get(Job,job_id)
+    if not job:
+        raise HTTPException(status_code=404,detail="Job not found")
+    if current_user["role"]!="admin"and job.recruiter_id!=current_user["user_id"]:
+        raise HTTPException(status_code=403,detail="Not allowed")
+    
+    result = await db.execute(
+        select(Application).where(Application.job_id==job_id)
+    )
+    
+    return result.scalars().all()
 
