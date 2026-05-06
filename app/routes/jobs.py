@@ -4,13 +4,15 @@ from app.db import get_db
 from app.models_db.job import Job
 from app.models.job import JobCreate
 from app.utils.dependencies import require_roles
+from app.models_db.user import User
+from sqlalchemy import select
 
 from app.models_db.application import Application
 from app.models.applications import ApplyRequest
 
-jobs_router = APIRouter()
+jobs_router = APIRouter(prefix="/jobs",tags=["Jobs"])
 
-@jobs_router.post("/jobs")
+@jobs_router.post("/")
 async def create_job(
     job: JobCreate,
     db: AsyncSession = Depends(get_db),
@@ -19,7 +21,7 @@ async def create_job(
     new_job = Job(
         title=job.title,
         description = job.description,
-        created_by = current_user["user_id"]
+        created_by= current_user["user_id"]
     )
     db.add(new_job)
     await db.commit()
@@ -27,7 +29,7 @@ async def create_job(
 
     return {"message":"Job created","job_id":new_job.id}
 
-from sqlalchemy import select
+
 
 @jobs_router.get("/")
 async def get_jobs(db: AsyncSession = Depends(get_db)):
@@ -79,8 +81,27 @@ async def get_job_applications(
         raise HTTPException(status_code=403,detail="Not allowed")
     
     result = await db.execute(
-        select(Application).where(Application.job_id==job_id)
+        select(Application, User)
+        .join(User, Application.user_id == User.id)
+        .where(Application.job_id == job_id)
     )
+    data = [
+
+    {
+
+        "application_id": app.id,
+
+        "status": app.status,
+
+        "candidate_name": user.name,
+
+        "candidate_email": user.email
+
+    }
+
+    for app, user in result.all()
+
+    ]
     
-    return result.scalars().all()
+    return data
 
