@@ -1,10 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel,EmailStr
 from typing import Optional
 
 class User(BaseModel):
     name:str
     age:int
-    email:str
+    email:EmailStr
     password:str
     role: str = "candidate"
 
@@ -14,19 +14,21 @@ class updated_user(BaseModel):
     email:Optional[str]=None
 
 class UserLogin(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 class UserResponse(BaseModel):
     id: int
     name: str
     age: int
-    email: str
+    email: EmailStr
+    class Config:
+        from_attributes = True
 
 class UserCreate(BaseModel):
     name: str
     age: int
-    email: str
+    email: EmailStr
     password: str
 
 
