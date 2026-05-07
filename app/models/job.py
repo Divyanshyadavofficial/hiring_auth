@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel,EmailStr
 
 class JobCreate(BaseModel):
     title: str
@@ -11,3 +11,16 @@ class JobResponse(BaseModel):
     created_by: int
     class Config: 
         from_attributes = True
+
+class JobCreateResponse(BaseModel):
+    message: str
+    job_id: int
+
+class ApplyJobResponse(BaseModel):
+    message: str
+
+class JobApplicationResponse(BaseModel):
+    application_id: int
+    status: str
+    candidate_name: str
+    candidate_email: EmailStr

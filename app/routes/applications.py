@@ -1,73 +1,157 @@
-from fastapi import APIRouter,Depends,HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,func
+from sqlalchemy import select, func
 
 from app.db import get_db
+
 from app.models_db.application import Application
 from app.models_db.job import Job
 from app.models_db.user import User
 
-from app.utils.dependencies import require_roles,get_current_user
+from app.utils.dependencies import require_roles
 
-applications_router = APIRouter(prefix="/applications",tags=["Applications"])
+from app.models.applications import (
+    ApplicationResponse,
+    ApplicationStatusUpdate,
+    CandidateDashboardResponse
+)
+
+applications_router = APIRouter(
+    prefix="/applications",
+    tags=["Applications"]
+)
+
+VALID_STATUS = ["pending", "accepted", "rejected"]
+
+
+# ==================================================
+# Candidate Dashboard
+# ==================================================
+
+@applications_router.get(
+    "/dashboard",
+    response_model=CandidateDashboardResponse
+)
+async def dashboard(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles(["candidate"]))
+):
+    result = await db.execute(
+        select(
+            func.count().label("total"),
+
+            func.count()
+            .filter(Application.status == "pending")
+            .label("pending"),
+
+            func.count()
+            .filter(Application.status == "accepted")
+            .label("accepted"),
+
+            func.count()
+            .filter(Application.status == "rejected")
+            .label("rejected")
+
+        ).where(
+            Application.user_id == current_user["user_id"]
+        )
+    )
+
+    stats = result.one()
+
+    return {
+        "total": stats.total,
+        "pending": stats.pending,
+        "accepted": stats.accepted,
+        "rejected": stats.rejected
+    }
+
+
+# ==================================================
+# Candidate View Own Applications
+# ==================================================
 
 @applications_router.get("/me")
 async def get_my_applications(
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_roles(["candidate"]))
+    current_user=Depends(require_roles(["candidate"]))
 ):
     result = await db.execute(
-        select(Application,Job)
-        .join(Job,Application.job_id==Job.id)
-        .where(Application.user_id == current_user["user_id"])
+        select(Application, Job)
+        .join(Job, Application.job_id == Job.id)
+        .where(
+            Application.user_id == current_user["user_id"]
+        )
     )
-    return[
+
+    return [
         {
-            "application_id":app.id,
-            "job_title":job.title,
-            "status":app.status
+            "application_id": app.id,
+            "job_title": job.title,
+            "status": app.status
         }
-        for app,job in result.all()
+        for app, job in result.all()
     ]
 
 
+# ==================================================
+# Recruiter/Admin Update Application Status
+# ==================================================
 
-
-
-VALID_STATUS = ["pending", "accepted", "rejected"]
-
-@applications_router.patch("/{application_id}")
+@applications_router.patch(
+    "/{application_id}",
+    response_model=ApplicationResponse
+)
 async def update_application_status(
     application_id: int,
-    status: str,
+    data: ApplicationStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "recruiter"]))
+    current_user=Depends(require_roles(["admin", "recruiter"]))
 ):
-    app = await db.get(Application, application_id)
+    application = await db.get(
+        Application,
+        application_id
+    )
 
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
+    if not application:
+        raise HTTPException(
+            status_code=404,
+            detail="Application not found"
+        )
 
-   
-    if status not in VALID_STATUS:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    if data.status not in VALID_STATUS:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid status"
+        )
 
-    
-    job = await db.get(Job, app.job_id)
+    job = await db.get(Job, application.job_id)
 
-    if current_user["role"] != "admin" and job.recruiter_id != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="Not allowed")
+    if (
+        current_user["role"] != "admin"
+        and job.created_by != current_user["user_id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Not allowed"
+        )
 
-    app.status = status
+    application.status = data.status
+
     await db.commit()
+    await db.refresh(application)
 
-    return {"message": "Status updated"}
+    return application
 
+
+# ==================================================
+# Admin View All Applications
+# ==================================================
 
 @applications_router.get("/")
 async def get_all_applications(
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_roles(["admin"]))
+    current_user=Depends(require_roles(["admin"]))
 ):
     result = await db.execute(
         select(Application, User, Job)
