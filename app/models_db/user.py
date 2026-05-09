@@ -14,6 +14,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(nullable=False,unique=True)
     password: Mapped[str] = mapped_column(nullable=False)
     role:Mapped[str] = mapped_column(String,default="candidate")
+    resume_url:Mapped[str] = mapped_column(String,nullable=True)
 
     jobs = relationship("Job",back_populates="recruiter")
     applications = relationship("Application",back_populates="candidate")

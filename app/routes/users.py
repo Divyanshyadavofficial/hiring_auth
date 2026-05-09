@@ -1,14 +1,20 @@
-from fastapi import APIRouter,HTTPException,Depends
+from fastapi import APIRouter,HTTPException,Depends,UploadFile,File
+import os
+import shutil
 from app.models.user import User,UserResponse,UserCreate
 from app.db import get_db
 from app.models_db.user import User as UserDB
 from app.models.user import updated_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.security import hash_password
-from sqlalchemy import select
+from sqlalchemy import select,delete
 from app.core.config import settings
+from app.models_db.resume_skill import ResumeSkill
 
 from app.utils.dependencies import require_roles,admin_or_self
+
+from app.services.resume_service import extract_text_from_pdf
+from app.services.skill_extractor import extract_skills
 
 user_router = APIRouter()
 
@@ -129,7 +135,45 @@ async def delete_user(
 
 
     
+@user_router.post("/upload-resume")
+async def upload_resume(
+    db: AsyncSession = Depends(get_db),
+    file: UploadFile = File(...),
+    current_user = Depends(require_roles(["candidate"]))
+):
+    if file.content_type !="application/pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files allowed"
+        )
+    upload_dir = "uploads/resumes"
 
+    os.makedirs(upload_dir,exist_ok=True)
 
+    file_path = f"{upload_dir}/{current_user['user_id']}_{file.filename}"
 
+    with open(file_path,"wb") as buffer:
+        shutil.copyfileobj(file.file,buffer)
+    user = await db.get(UserDB,current_user["user_id"])
+    user.resume_url = file_path
+    text = extract_text_from_pdf(file_path)
+    skills = extract_skills(text)
+
+    await db.execute(
+        delete(ResumeSkill).where(
+            ResumeSkill.user_id == current_user["user_id"]
+        )
+    )
+    for skill in skills:
+        db_skill = ResumeSkill(
+            user_id=current_user["user_id"],
+            skill_name = skill
+        )
+        db.add(db_skill)
+    await db.commit()
+    return{
+        "message":"Resume uploaded successfully",
+        "resume_url":file_path,
+        "skills":skills
+    }
 
