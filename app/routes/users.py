@@ -15,6 +15,8 @@ from app.utils.dependencies import require_roles,admin_or_self
 
 from app.services.resume_service import extract_text_from_pdf
 from app.services.skill_extractor import extract_skills
+from app.services.embedding_service import generate_embedding
+from app.vector_db.chroma_client import resume_collection
 
 user_router = APIRouter()
 
@@ -158,7 +160,19 @@ async def upload_resume(
     user.resume_url = file_path
     text = extract_text_from_pdf(file_path)
     skills = extract_skills(text)
+    embedding = generate_embedding(text)
 
+    resume_collection.upsert(
+        ids=[str(current_user["user_id"])],
+        embeddings=[embedding],
+        documents=[text],
+        metadatas=[
+            {
+                "user_id": current_user["user_id"]
+            }
+        ]
+    )
+    
     await db.execute(
         delete(ResumeSkill).where(
             ResumeSkill.user_id == current_user["user_id"]
