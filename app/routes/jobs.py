@@ -18,6 +18,10 @@ from app.models.job import (
 
 from app.utils.dependencies import require_roles
 
+from app.services.embedding_service import generate_embedding
+from app.services.skill_extractor import extract_skills
+from app.vector_db.chroma_client import job_collection
+
 jobs_router = APIRouter(
     prefix="/jobs",
     tags=["Jobs"]
@@ -33,21 +37,39 @@ async def create_job(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles(["recruiter", "admin"]))
 ):
+    skills = extract_skills(job.description)
+    embedding = generate_embedding(job.description)
     new_job = Job(
         title=job.title,
         description=job.description,
         created_by=current_user["user_id"]
     )
+    
 
     db.add(new_job)
 
     await db.commit()
     await db.refresh(new_job)
 
+    job_collection.upsert(
+        ids=[str(new_job.id)],
+        embeddings=[embedding],
+        documents=[job.description],
+        metadatas=[
+            {
+                "job_id":new_job.id,
+                "title":new_job.title,
+                "skills":",".join(skills)
+            }
+        ]
+    )
+
     return {
         "message": "Job created",
-        "job_id": new_job.id
+        "job_id": new_job.id,
+        "skills":skills
     }
+
 
 
 @jobs_router.get(
