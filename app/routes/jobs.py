@@ -20,7 +20,8 @@ from app.utils.dependencies import require_roles
 
 from app.services.embedding_service import generate_embedding
 from app.services.skill_extractor import extract_skills
-from app.vector_db.chroma_client import job_collection
+from app.vector_db.chroma_client import job_collection,resume_collection
+from app.services.similarity_service import cosine_similarity
 
 jobs_router = APIRouter(
     prefix="/jobs",
@@ -117,11 +118,42 @@ async def apply_job(
             status_code=400,
             detail="Already applied"
         )
+    resume_data = resume_collection.get(
+        ids=[str(current_user["user_id"])],
+        include=["embeddings"]
+    )
+    if not resume_data["embeddings"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Resume embedding not found"
+        )
+    resume_embedding = (
+        resume_data["embeddings"][0]
+    )
 
+    job_data = job_collection.get(
+        ids=[str(job_id)],
+        include=["embeddings"]
+    )
+
+    if not job_data["embeddings"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Job embedding not found"
+        )
+
+    job_embedding = (
+        job_data["embeddings"][0]
+    )
+
+    score = cosine_similarity(
+        resume_embedding,job_embedding
+    )
     application = Application(
         user_id=current_user["user_id"],
         job_id=job_id,
-        status="pending"
+        status="pending",
+        match_score = round(score*100,2)
     )
 
     db.add(application)
@@ -129,7 +161,8 @@ async def apply_job(
     await db.commit()
 
     return {
-        "message": "Applied successfully"
+        "message": "Applied successfully",
+        "match_score":round(score*100,2)
     }
 
 
