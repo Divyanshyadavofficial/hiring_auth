@@ -20,7 +20,7 @@ from app.utils.dependencies import require_roles
 
 from app.services.embedding_service import generate_embedding
 from app.services.skill_extractor import extract_skills
-from app.vector_db.chroma_client import job_collection,resume_collection
+from app.vector_db.chroma_client import get_job_collection,get_resume_collection
 from app.services.similarity_service import cosine_similarity
 
 jobs_router = APIRouter(
@@ -51,7 +51,7 @@ async def create_job(
 
     await db.commit()
     await db.refresh(new_job)
-
+    job_collection = (get_job_collection())
     job_collection.upsert(
         ids=[str(new_job.id)],
         embeddings=[embedding],
@@ -118,6 +118,7 @@ async def apply_job(
             status_code=400,
             detail="Already applied"
         )
+    resume_collection = (get_resume_collection())
     resume_data = resume_collection.get(
         ids=[str(current_user["user_id"])],
         include=["embeddings"]
@@ -130,7 +131,7 @@ async def apply_job(
     resume_embedding = (
         resume_data["embeddings"][0]
     )
-
+    job_collection = (get_job_collection())
     job_data = job_collection.get(
         ids=[str(job_id)],
         include=["embeddings"]

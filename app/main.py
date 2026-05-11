@@ -8,8 +8,8 @@ from app.routes.auth import auth_router
 from app.routes.admin import admin_router
 from app.routes.jobs import jobs_router
 from app.routes.applications import applications_router
-
-app = FastAPI(docs_url=None,redoc_url=None)
+from app.routes.resume import resume_router
+app = FastAPI()
 
 @app.on_event("startup")
 async def startup():
@@ -25,3 +25,4 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(jobs_router)
 app.include_router(applications_router)
+app.include_router(resume_router)

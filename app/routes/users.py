@@ -16,7 +16,8 @@ from app.utils.dependencies import require_roles,admin_or_self
 from app.services.resume_service import extract_text_from_pdf
 from app.services.skill_extractor import extract_skills
 from app.services.embedding_service import generate_embedding
-from app.vector_db.chroma_client import resume_collection
+from app.vector_db.chroma_client import get_resume_collection
+
 
 user_router = APIRouter()
 
@@ -136,7 +137,13 @@ async def delete_user(
     return {"message":"user deleted successfully"}
 
 
-    
+
+# Upload Resume
+# → save file
+# → enqueue task
+# → background worker generates embeddings
+# → save to vector DB
+#   
 @user_router.post("/upload-resume")
 async def upload_resume(
     db: AsyncSession = Depends(get_db),
@@ -162,6 +169,9 @@ async def upload_resume(
     skills = extract_skills(text)
     embedding = generate_embedding(text)
 
+    resume_collection = (
+        get_resume_collection()
+    )
     resume_collection.upsert(
         ids=[str(current_user["user_id"])],
         embeddings=[embedding],

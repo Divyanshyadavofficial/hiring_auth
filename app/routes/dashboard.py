@@ -5,6 +5,7 @@ from app.db import get_db
 from app.models_db.application import Application
 from app.models_db.job import Job
 from app.utils.dependencies import require_roles
+from app.models_db.user import User
 
 dashboard_router = APIRouter(prefix="/dashboard",tags=["Dashboard"])
 
@@ -40,9 +41,25 @@ async def get_my_applications(
     offset = (page-1)*limit
 
     result = await db.execute(
-        select(Application,Job)
-        .join(Job,Application.job_id==Job.id)
-        .where(Job.created_by == current_user["user_id"])
+        select(
+            Application,
+            Job,
+            User
+        )
+        .join(
+            Job,
+            Application.job_id==Job.id
+        )
+        .join(
+            User,
+            Application.user_id == User.id
+        )
+        .where(
+            Job.created_by == current_user["user_id"]
+        )
+        .order_by(
+            Application.match_score.desc()
+        )
         .offset(offset)
         .limit(limit)
     )
@@ -53,13 +70,16 @@ async def get_my_applications(
         "results":[
             {
                 "application_id":app.id,
-                "job_id":job.id,
-                "job_title":job.title,
-                "candidate_id":app.user_id,
-                "status":app.status
-    
+                "job_id": job.id,
+                "job_title": job.title,
+                "candidate_id": user.id,
+                "candidate_name": user.name,
+                "candidate_email": user.email,
+                "resume_url": user.resume_url,
+                "status": app.status,
+                "match_score": app.match_score
             }
-            for app,job in rows
+            for app,job,user in rows
         ]
     }
 
