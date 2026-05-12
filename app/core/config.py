@@ -1,4 +1,5 @@
 from pydantic_settings import SettingsConfigDict,BaseSettings
+from functools import lru_cache
 class Settings(BaseSettings):
     DATABASE_URL:str
     SECRET_KEY:str
@@ -8,8 +9,12 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD:str
     ADMIN_NAME:str
     ADMIN_AGE: int
+    CHROMA_DB_PATH:str
+    EMBEDDING_MODEL:str
     
     model_config = SettingsConfigDict(
         env_file=".env"
     )
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings():
+    return Settings()

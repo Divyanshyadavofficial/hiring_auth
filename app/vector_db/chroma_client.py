@@ -1,13 +1,16 @@
 import chromadb
+from app.core.config import (
+    get_settings
+)
 
 from functools import lru_cache
 
 
 @lru_cache(maxsize=1)
 def get_chroma_client():
-
+    settings = get_settings()
     return chromadb.PersistentClient(
-        path="./chroma_db"
+        path=settings.CHROMA_DB_PATH
     )
 
 

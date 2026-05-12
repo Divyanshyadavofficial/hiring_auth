@@ -3,7 +3,8 @@ from jose import JWTError,jwt
 from app.models_db.user import BlacklistToken
 from sqlalchemy import select
 import uuid
-from app.core.config import settings
+from app.core.config import get_settings
+settings = get_settings()
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
