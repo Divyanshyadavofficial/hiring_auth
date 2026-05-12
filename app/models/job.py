@@ -8,13 +8,13 @@ class JobResponse(BaseModel):
     id: int
     title: str
     description: str
-    created_by: int
     class Config: 
         from_attributes = True
 
 class JobCreateResponse(BaseModel):
     message: str
     job_id: int
+    created_by: int
 
 class ApplyJobResponse(BaseModel):
     message: str
