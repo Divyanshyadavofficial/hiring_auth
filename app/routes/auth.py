@@ -70,4 +70,4 @@ async def logout(
 
     db.add(token_entry)
     await db.commit()
-    return {"message":"Logged out successfully"}
+    return {"message":"Logged out successfully."}
