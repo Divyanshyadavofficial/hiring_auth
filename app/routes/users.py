@@ -8,7 +8,9 @@ from app.models.user import updated_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.security import hash_password
 from sqlalchemy import select,delete
-from app.core.config import settings
+from app.core.config import get_settings
+settings = get_settings()
+
 from app.models_db.resume_skill import ResumeSkill
 
 from app.utils.dependencies import require_roles,admin_or_self

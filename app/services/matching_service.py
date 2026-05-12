@@ -22,11 +22,12 @@ def calculate_match_score(
         include=["embeddings"]
     )
 
-    if not resume_data["embeddings"]:
+    if("embeddings"not in resume_data
+       or len(resume_data["embeddings"])==0):
 
         raise HTTPException(
             status_code=400,
-            detail="Resume embedding not found"
+            detail="please upload your resume before applying"
         )
 
     job_data = job_collection.get(
@@ -34,12 +35,14 @@ def calculate_match_score(
         include=["embeddings"]
     )
 
-    if not job_data["embeddings"]:
-
+    if (
+    "embeddings" not in job_data
+    or len(job_data["embeddings"]) == 0
+    ):
         raise HTTPException(
-            status_code=400,
-            detail="Job embedding not found"
-        )
+        status_code=400,
+        detail="Job embedding not found")
+    
 
     resume_embedding = (
         resume_data["embeddings"][0]
