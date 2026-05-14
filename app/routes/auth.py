@@ -40,13 +40,13 @@ async def login(user:UserLogin,db:AsyncSession=Depends(get_db)):
 
 
 @auth_router.post("/refresh")
-async def refresh_token(data:RefreshTokenRequest):
+async def refresh_token(data:RefreshTokenRequest,db:AsyncSession = Depends(get_db)):
     payload = verify_token(data.refresh_token)
     if payload["type"] != "refresh":
         raise HTTPException(status_code=401, detail="Invalid token type")
     if payload is None:
         raise HTTPException(status_code=401,detail="Invalid refresh token")
-    result = await UserDB.execute(
+    result = await db.execute(
     select(UserDB).where(UserDB.id == payload["user_id"])
     )
     user = result.scalar_one()

@@ -39,7 +39,12 @@ async def create_user(user:UserCreate,db:AsyncSession=Depends(get_db)):
     await db.refresh(new_user)
 
     return{
-        "message":"user created successfully"
+        "id": new_user.id,
+        "name": new_user.name,
+        "age": new_user.age,
+        "email": new_user.email,
+        "role": new_user.role,
+        "message": "user created successfully"
     }
 
 
