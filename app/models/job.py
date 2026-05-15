@@ -14,13 +14,16 @@ class JobResponse(BaseModel):
 class JobCreateResponse(BaseModel):
     message: str
     job_id: int
-    created_by: int
+    skills:list[str]
 
 class ApplyJobResponse(BaseModel):
     message: str
+    match_score: float
 
 class JobApplicationResponse(BaseModel):
     application_id: int
     status: str
     candidate_name: str
     candidate_email: EmailStr
+    match_score: float
+    resume_url: str | None

@@ -66,7 +66,7 @@ async def create_job(
     return {
         "message": "Job created",
         "job_id": new_job.id,
-        "skills": skills
+        "skills": skills,
     }
 
 @jobs_router.get("/",response_model=list[JobResponse])

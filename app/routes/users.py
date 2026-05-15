@@ -26,6 +26,21 @@ user_router = APIRouter()
 
 @user_router.post("/users")
 async def create_user(user:UserCreate,db:AsyncSession=Depends(get_db)):
+    result = await db.execute(
+        select(UserDB).where(
+
+            UserDB.email == user.email
+
+        )
+
+    )
+    existing_user = result.scalars().first()
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
     new_user = UserDB(
         name = user.name,
         age = user.age,
@@ -58,9 +73,7 @@ async def get_user(
    user = await db.get(UserDB,user_id)
    if not user: 
        raise HTTPException(status_code=404,detail="User not found")
-   if current_user:
-       raise HTTPException(status_code=403,detail="invalid user")
-
+ 
    return user
 
 
@@ -83,8 +96,6 @@ async def update_user(
 
 
 ):
-    if current_user:
-        raise HTTPException(status_code=403, detail="Not allowed")
     
     user = await db.get(UserDB,user_id)
     if not user:
@@ -108,8 +119,6 @@ async def update_specific_details(
     db:AsyncSession=Depends(get_db),
     current_user = Depends(admin_or_self)
 ):
-    if current_user:
-        raise HTTPException(status_code=403, detail="Not allowed")
     
     user = await db.get(UserDB,user_id)
     if not user:
@@ -133,8 +142,6 @@ async def delete_user(
     current_user=Depends(admin_or_self),                
     db:AsyncSession=Depends(get_db)
 ):
-    if current_user:
-        raise HTTPException(status_code=403, detail="Not allowed")
 
     user = await db.get(UserDB,user_id)
     if not user:

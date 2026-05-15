@@ -1,7 +1,8 @@
 import uuid
 import pytest
 
-
+# auth tests
+# register user tests
 @pytest.mark.asyncio
 async def test_register_user(client):
     payload = {
@@ -23,6 +24,76 @@ async def test_register_user(client):
 
     assert data["email"] == payload["email"]
     assert data["name"] == payload["name"]
+
+
+
+@pytest.mark.asyncio
+async def test_register_duplicate_email(client):
+    payload = {
+        "name":"harsh",
+        "age":23,
+        "email":"yadavdivyansh445@gmail.com",
+        "password":"password1234",
+        "role":"candidate"
+    }
+
+    response1 = await client.post(
+        "/users",
+        json=payload
+    )
+    assert response1.status_code in [200,201]
+
+    response2 = await client.post(
+        "/users",
+        json=payload
+    )
+    assert response2.status_code in [400, 409, 500]
+
+@pytest.mark.asyncio
+async def test_register_invalid_email(client):
+    payload = {
+        "name": "Divyansh",
+        "age": 22,
+        "email": f"{uuid.uuid4()}@.com",
+        "password": "password123",
+        "role": "candidate"
+    }
+    response1 = await client.post(
+        "/users",
+        json=payload
+    )
+    assert response1.status_code in [400,409,500,422]
+
+@pytest.mark.asyncio
+async def test_register_missing_password(client):
+    payload = {
+        "name": "Divyansh",
+        "age": 22,
+        "email": f"{uuid.uuid4()}@.com",
+        
+        "role": "candidate"
+    }
+    response1 = await client.post(
+        "/users",
+        json=payload
+    )
+    assert response1.status_code in [400,409,500,422]
+
+
+@pytest.mark.asyncio
+async def test_register_invalid_role(client):
+    payload = {
+        "name": "Divyansh",
+        "age": 22,
+        "email": f"{uuid.uuid4()}@.com",
+        
+        "role": "recruiter"
+    }
+    response1 = await client.post(
+        "/users",
+        json=payload
+    )
+    assert response1.status_code in [400,409,500,422]
 
 
 @pytest.mark.asyncio
