@@ -96,6 +96,7 @@ async def test_register_invalid_role(client):
     assert response1.status_code in [400,409,500,422]
 
 
+#login user tests
 @pytest.mark.asyncio
 async def test_login_user(client):
     email = f"{uuid.uuid4()}@test.com"

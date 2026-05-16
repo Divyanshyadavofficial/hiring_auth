@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped,mapped_column,relationship
 from sqlalchemy import Integer,ForeignKey,String,UniqueConstraint
-from app.models_db.user import Base
+from app.models_db.base import Base
 from sqlalchemy import Index,Integer,ForeignKey,String,Float
 
 class Application(Base):

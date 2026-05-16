@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped,mapped_column
 from sqlalchemy import Integer,String,ForeignKey
-from app.models_db.user import Base
+from app.models_db.base import Base
 
 class ResumeSkill(Base):
     __tablename__ = "resume_skills"

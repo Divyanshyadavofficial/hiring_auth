@@ -1,7 +1,7 @@
 from sqlalchemy.orm  import Mapped,mapped_column,relationship
 from sqlalchemy import INTEGER,String,Text,ForeignKey,Index
 
-from app.models_db.user import Base
+from app.models_db.base import Base
 
 class Job(Base):
     __tablename__ = "jobs"
@@ -18,3 +18,8 @@ class Job(Base):
 
     recruiter = relationship("User",back_populates="jobs")
     applications = relationship("Application",back_populates="job")
+    skills = relationship(
+        "JobSkill",
+        backref="job",
+        cascade="all,delete-orphan"
+    )

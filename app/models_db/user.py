@@ -1,9 +1,8 @@
 from sqlalchemy.orm import DeclarativeBase,Mapped,mapped_column,relationship
 from sqlalchemy import String
+from app.models_db.base import Base
 
 
-class Base(DeclarativeBase):
-    pass
 
 
 class User(Base):
