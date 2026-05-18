@@ -17,6 +17,11 @@ class JobSkill(Base):
         index=True
     )
 
+    skill_status: Mapped[str] = mapped_column(
+    String,
+    default="pending"
+    )
+
     importance_weight: Mapped[float] = mapped_column(
         Float,
         default=1.0

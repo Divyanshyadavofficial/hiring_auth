@@ -4,6 +4,7 @@ from sqlalchemy import select,func
 from app.db import get_db
 from app.models_db.application import Application
 from app.models_db.job import Job
+from app.models_db.job_skill import JobSkill
 from app.utils.dependencies import require_roles
 from app.models_db.user import User
 from app.models_db.resume_skill import ResumeSkill

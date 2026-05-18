@@ -1,4 +1,5 @@
 from pydantic import BaseModel,EmailStr
+from typing import Literal
 
 class JobCreate(BaseModel):
     title: str
@@ -27,3 +28,17 @@ class JobApplicationResponse(BaseModel):
     candidate_email: EmailStr
     match_score: float
     resume_url: str | None
+
+
+class SkillReview(BaseModel):
+    id: int | None = None
+    skill_name: str
+    skill_status: Literal[
+        "pending",
+        "approved",
+        "rejected"
+    ]
+
+
+class SkillReviewRequest(BaseModel):
+    skills: list[SkillReview]

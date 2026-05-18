@@ -5,9 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db import get_db
 from app.models_db.job import Job
+from app.models_db.job_skill import JobSkill
 from app.models_db.user import User
 from app.models_db.application import Application
-from app.models.job import   JobCreate,JobResponse,JobCreateResponse,ApplyJobResponse,JobApplicationResponse
+from app.models.job import   JobCreate,JobResponse,JobCreateResponse,ApplyJobResponse,JobApplicationResponse,SkillReviewRequest
 
 
 from app.utils.dependencies import require_roles
@@ -34,40 +35,160 @@ async def create_job(
         )
     )
 ):
-    skills = extract_skills(
-        job.description
+    try:
+        skills = extract_skills(
+            job.description
+        )
+        embedding = generate_embedding(
+            job.description
+        )
+        new_job = Job(
+            title=job.title,
+            description=job.description,
+            created_by=current_user["user_id"]
+        )
+        db.add(new_job)
+
+        await db.flush()
+
+        await db.refresh(new_job)
+
+        for skill in skills:
+            job_skill = JobSkill(
+                job_id=new_job.id,
+                skill_name=skill
+            )
+            db.add(job_skill)
+
+        await db.commit()
+
+        job_collection = get_job_collection()
+        job_collection.upsert(
+            ids=[str(new_job.id)],
+            embeddings=[embedding],
+            documents=[job.description],
+            metadatas=[
+                {
+                    "job_id": new_job.id,
+                    "title": new_job.title,
+                    "skills": ",".join(skills)
+                }
+            ]
+        )
+        return {
+
+            "message": "Job created",
+            "job_id": new_job.id,
+            "skills": skills
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create job"
+        )
+
+
+
+@jobs_router.get("/{job_id}/skills")
+async def get_skills(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["recruiter","admin"])
     )
-    embedding = generate_embedding(
-        job.description
+):
+    job = await db.get(Job, job_id)
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+    if (
+        current_user["role"] != "admin"
+        and job.created_by != current_user["user_id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Not allowed"
+        )
+    result = await db.execute(
+        select(JobSkill).where(
+            JobSkill.job_id == job_id
+        )
     )
-    new_job = Job(
-        title=job.title,
-        description=job.description,
-        created_by=current_user["user_id"]
-    )
-    db.add(new_job)
-    await db.commit()
-    await db.refresh(new_job)
-    job_collection = (
-        get_job_collection()
-    )
-    job_collection.upsert(
-        ids=[str(new_job.id)],
-        embeddings=[embedding],
-        documents=[job.description],
-        metadatas=[
-            {
-                "job_id": new_job.id,
-                "title": new_job.title,
-                "skills": ",".join(skills)
-            }
-        ]
-    )
-    return {
-        "message": "Job created",
-        "job_id": new_job.id,
-        "skills": skills,
-    }
+    skills = result.scalars().all()
+    return [
+        {
+            "id": skill.id,
+            "skill_name": skill.skill_name,
+            "skill_status": skill.skill_status,
+            "importance_weight": skill.importance_weight,
+            "difficulty_level": skill.difficulty_level
+        }
+        for skill in skills
+    ]
+
+
+@jobs_router.patch("/{job_id}/skills")
+async def review_skills(
+    job_id: int,
+    payload: SkillReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user= Depends(require_roles(["recruiter","admin"]))
+):
+    try:
+        job = await db.get(Job,job_id)
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found"
+            )
+        if (
+            current_user["role"] != "admin"
+            and job.created_by != current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+    
+        for skill in payload.skills:
+            if skill.id:
+            
+                existing_skill = await db.get(
+                    JobSkill,
+                    skill.id
+                )
+                if not existing_skill:
+
+                    raise HTTPException(status_code=404,detail="Skill not found")
+
+                if existing_skill.job_id != job_id:
+
+                    raise HTTPException(status_code=403,detail="Skill does not belong to this job")
+                existing_skill.skill_name = skill.skill_name
+                existing_skill.skill_status = skill.skill_status 
+            else:
+                new_skill = JobSkill(
+                    job_id = job_id,
+                    skill_name = skill.skill_name,
+                    skill_status = skill.skill_status
+                )
+                db.add(new_skill)
+        await db.commit()
+
+        return {
+        "message": "Skills updated successfully"
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to review skills"
+        )
+
+    
 
 @jobs_router.get("/",response_model=list[JobResponse])
 async def get_jobs(
