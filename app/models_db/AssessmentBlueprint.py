@@ -393,9 +393,8 @@ class Assessment(Base):
         back_populates="assessments",
     )
 
-    # Future relationship
-    # questions = relationship(
-    #     "AssessmentQuestion",
-    #     back_populates="assessment",
-    #     cascade="all, delete-orphan"
-    # )
+    questions = relationship(
+        "AssessmentQuestion",
+        back_populates="assessment",
+        cascade="all, delete-orphan"
+    )

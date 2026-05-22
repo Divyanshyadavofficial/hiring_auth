@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     ADMIN_AGE: int
     CHROMA_DB_PATH:str
     EMBEDDING_MODEL:str
+    GROQ_API_KEY:str
+    GROQ_MODEL:str
     
     model_config = SettingsConfigDict(
         env_file=".env"
