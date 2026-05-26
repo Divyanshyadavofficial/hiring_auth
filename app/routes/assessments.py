@@ -242,7 +242,7 @@ def question_regenerate_prompt(
 async def regenerate(
     question_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user= Depends(require_roles)
+    current_user= Depends(require_roles(["recruiter","admin"]))
 ):
     try:
         question = await db.get(
@@ -356,5 +356,86 @@ async def regenerate(
         raise HTTPException(
             status_code=500,
             detail=f"Question regeneration failed: "
+            f"{str(e)}"
+        )
+
+
+@assessment_router.post("/{assessment_id}/publish")
+async def  assessment_publish(
+    assessment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_roles(["recruiter","admin"]))
+
+):
+    try: 
+        assessment = await db.get(
+            Assessment,
+            assessment_id
+
+        )
+        if not assessment:
+            raise HTTPException(
+                status_code= 404,
+                detail="Assessment not found"
+            )
+        
+        job = await db.get(
+            Job,
+            assessment.job_id
+        )
+        if not job:
+            raise HTTPException(
+                status_code= 404,
+                detail="Job not found"
+            )
+        if(current_user["role"]!="admin"and job.created_by!=
+           current_user["user_id"]):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        
+        result = await db.execute(
+            select(AssessmentQuestion).where(
+                AssessmentQuestion.assessment_id == assessment_id
+            )
+        )
+        questions = result.scalars().all()
+
+        if not questions:
+            raise HTTPException(
+                status_code=400,
+                detail="Assessment has no questions"
+            )
+        
+        not_approved = [
+            question
+            for question in questions
+            if question.status!="approved"
+        ]
+
+        if not_approved:
+            raise HTTPException(
+                status_code=400,
+                detail="All questions must be approved before" \
+                "publishing"
+            )
+        
+        assessment.status = "published"
+
+        await db.commit()
+        await db.refresh(assessment)
+        return {
+            "message":"Assessment published successfully",
+            "assessment_id":assessment_id,
+            "status":assessment.status
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Assessment publish failed: "
             f"{str(e)}"
         )
