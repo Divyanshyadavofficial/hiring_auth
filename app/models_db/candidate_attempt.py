@@ -1,6 +1,10 @@
-from sqlalchemy.orm import Mapped,mapped_column
+from sqlalchemy.orm import Mapped,mapped_column,relationship
 from sqlalchemy import ForeignKey,Integer,Text,String,Float
 from app.models_db.base import Base
+from datetime import datetime
+from sqlalchemy import DateTime
+from sqlalchemy.sql import func
+
 
 class CandidateAttempt(Base):
     __tablename__ = "candidate_attempts"
@@ -17,9 +21,15 @@ class CandidateAttempt(Base):
         ForeignKey("assessments.id")
     )
 
-    started_at = mapped_column(nullable=True)
+    started_at:Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.mow()
+    )
 
-    completed_at = mapped_column(nullable=True)
+    completed_at: Mapped[datetime|None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
 
     total_score: Mapped[float] = mapped_column(
         Float,
@@ -34,4 +44,11 @@ class CandidateAttempt(Base):
     status: Mapped[str] = mapped_column(
         String,
         default="in_progress"
+    )
+
+    answers = relationship(
+        "CandidateAnswer",
+        back_populates="attempt",
+        cascade="all, delete-orphan"
+
     )

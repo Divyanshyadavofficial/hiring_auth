@@ -439,3 +439,7 @@ async def  assessment_publish(
             detail=f"Assessment publish failed: "
             f"{str(e)}"
         )
+
+
+
+assessment_router.post("/{assessment_id}/start")
