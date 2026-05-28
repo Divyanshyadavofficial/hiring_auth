@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models_db.assessment_question import AssessmentQuestion
 from app.models_db.AssessmentBlueprint import Assessment
 from app.models_db.job import Job
+from app.models_db.application import Application
+from app.models_db.candidate_attempt import CandidateAttempt
 from app.db import get_db
 from app.utils.dependencies import require_roles
 from app.models.question_review import QuestionReviewRequest
@@ -443,3 +445,77 @@ async def  assessment_publish(
 
 
 assessment_router.post("/{assessment_id}/start")
+async def assessment_start(
+        assessment_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user=Depends(require_roles(["candidate"]))
+):
+    try:
+        assessment = await db.get(Assessment,
+                                  assessment_id)
+        if not assessment:
+            raise HTTPException(status_code=404,detail="Assessment does not exists")
+        
+        if assessment.status != "published":
+            raise HTTPException(
+                status_code=400,
+                detail="Assessment is not published yet"
+            )
+        
+        result = await db.execute(
+            select(Application).where(
+                Application.user_id == current_user["user_id"],
+                Application.job_id == assessment.job_id
+            )
+        )
+
+        application = result.scalar_one_or_none()
+        
+        if not application:
+            raise HTTPException(
+                status_code=403,
+                detail=("You have not applied for this job")
+            )
+        
+        existing_attempt_result = await db.execute(
+            select(CandidateAttempt).where(
+                CandidateAttempt.application_id == application.id,
+                CandidateAttempt.assessment_id == assessment_id
+            )
+        )
+
+        existing_attempt = existing_attempt_result.scalar_one_or_none()
+
+        if existing_attempt:
+            raise HTTPException(
+                status_code=400,
+                detail="Assessment attempt already exists"
+            )
+        
+        new_attempt = CandidateAttempt(
+            application_id = application.id,
+            assessment_id = assessment.id,
+            status = "in_progress"
+        )
+        db.add(new_attempt)
+
+        await db.commit()
+        await db.refresh(new_attempt)
+        return {
+            "message":(
+                "Assessment started successfully"
+            ),
+            "attempt_id":new_attempt.id,
+            "assessment_id":assessment_id,
+            "status":new_attempt.status
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Assessment start failed: "
+            f"{str(e)}"
+        )
