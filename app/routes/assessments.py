@@ -523,7 +523,7 @@ async def assessment_start(
 
 
 
-@assessment_router.get("/attempts/{attempt_id}/next-question"):
+@assessment_router.get("/attempts/{attempt_id}/next-question")
 async def get_next_question(
         attempt_id: int,
         db: AsyncSession = Depends(get_db),
