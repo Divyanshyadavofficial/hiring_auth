@@ -6,6 +6,7 @@ from app.models_db.AssessmentBlueprint import Assessment
 from app.models_db.job import Job
 from app.models_db.application import Application
 from app.models_db.candidate_attempt import CandidateAttempt
+from app.models_db.CandidateAnswer import CandidateAnswer
 from app.db import get_db
 from app.utils.dependencies import require_roles
 from app.models.question_review import QuestionReviewRequest
@@ -518,4 +519,99 @@ async def assessment_start(
             status_code=500,
             detail=f"Assessment start failed: "
             f"{str(e)}"
+        )
+
+
+
+@assessment_router.get("/attempts/{attempt_id}/next-question"):
+async def get_next_question(
+        attempt_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user = Depends(
+            require_roles(["candidate"])
+        )
+):
+    try:
+        attempt = await db.get(CandidateAttempt,attempt_id)
+        if not attempt:
+            raise HTTPException(status_code=404,detail="Attempt not found")
+        
+        application = await db.get(
+            Application,
+            attempt.application_id
+        )
+        if not application:
+            raise HTTPException(
+                status_code=404,
+                detail="Application not found"
+            )
+        
+        if application.user_id!=current_user["user_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        if attempt.status!="in_progress":
+            raise HTTPException(
+                status_code=400,
+                detail="Attempt is no longer active"
+            )
+
+        answered_result = await db.execute(
+            select(
+                CandidateAnswer.question_id
+            ).where(
+                CandidateAnswer.attempt_id == attempt_id
+            )
+        )
+        answered_ids = set(
+            answered_result.scalars().all()
+        )
+
+        question_result = await db.execute(
+            select(AssessmentQuestion).where(
+                AssessmentQuestion.assessment_id == attempt.assessment_id
+            )
+            .order_by(
+                AssessmentQuestion.id
+            )
+        )
+        questions = question_result.scalars().all()
+
+        next_question = None
+        for question in questions:
+            if question.id not in answered_ids:
+                next_question = question
+                break
+        
+        if not next_question:
+            return{
+                "completed":True,
+                "message":(
+                    "All questions attempted. "
+                    "Please finish assessment"
+                )
+            }
+        return {
+            "completed":False,
+            "question":{
+                "id":next_question.id,
+                "skill_name":next_question.skill_name,
+                "question_type":next_question.question_type,
+                "difficulty_level":next_question.difficulty_level,
+                "question_text":next_question.question_text,
+                "options":next_question.options,
+                "marks":next_question.marks,
+                "time_limit_seconds":next_question.time_limit_seconds
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"failed to fetch next question: "
+                f"{str(e)}"
+            )
         )
