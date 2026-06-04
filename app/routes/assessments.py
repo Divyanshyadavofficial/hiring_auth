@@ -1,6 +1,7 @@
 from fastapi import APIRouter,Depends,HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.assessment import SubmitAnswerRequest
 from app.models_db.assessment_question import AssessmentQuestion
 from app.models_db.AssessmentBlueprint import Assessment
 from app.models_db.job import Job
@@ -614,4 +615,116 @@ async def get_next_question(
                 f"failed to fetch next question: "
                 f"{str(e)}"
             )
+        )
+    
+
+@assessment_router.post("/attempts/questions/{question_id}/submit")
+async def question_submit(
+        question_id : int,
+        attempt_id: int,
+        payload: SubmitAnswerRequest,
+        db: AsyncSession = Depends(get_db),
+        current_user = Depends(require_roles(["candidate"]))
+        
+):
+    try: 
+        attempt = await db.get(CandidateAttempt,attempt_id)
+        if not attempt:
+            raise HTTPException(status_code=404,
+                            detail="Attempt not found")
+        
+        if attempt.status!="in_progress":
+            raise HTTPException(
+                status_code=400,
+                detail="Attempt is not active"
+            )
+        
+        application = await db.get(
+            Application,
+            attempt.application_id 
+        )
+
+        if not application:
+            raise HTTPException(
+                status_code=404,
+                detail="Application mot found"
+            )
+        
+
+        if application.user_id!=current_user["user_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        
+        
+        question = await db.get(
+            AssessmentQuestion,question_id
+        )
+        if not question:
+            raise HTTPException(status_code=404,
+                detail="question not found")
+        
+        if question.assessment_id !=attempt.assessment_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Question does not belong to this assessment"
+            )
+        
+        
+
+        existing_anser_result = await db.execute(
+            select(CandidateAnswer).where(
+                CandidateAnswer.attempt_id == attempt.id,
+                CandidateAnswer.question_id == question_id
+            )
+        )
+
+        existing_answer = existing_anser_result.scalar_one_or_none()
+
+        if existing_answer:
+            raise HTTPException(
+                status_code=400,
+                detail= "Question already answered"
+            )
+        
+        is_correct = (
+            payload.answer.strip().lower() 
+            ==
+            question.expected_answer.strip().lower()
+        )
+
+        obtained_marks = (
+            question.marks
+            if is_correct
+            else 0
+        )
+
+        candidate_answer = CandidateAnswer(
+            attempt_id = attempt.id,
+            question_id = question.id,
+            candidate_answer = payload.answer,
+            is_correct=is_correct,
+            obtained_marks=obtained_marks,
+            time_taken_seconds=payload.time_taken_seconds
+        )
+        db.add(candidate_answer)
+
+        await db.commit()
+
+        return{
+            "message":
+                "Answer submitted successfully",
+            "question_id": question.id,
+            "is_correct":is_correct,
+            "obtained_marks":obtained_marks
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Answer submission failed: "
+            f"{str(e)}"
         )
