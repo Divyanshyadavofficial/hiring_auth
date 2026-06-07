@@ -15,6 +15,7 @@ from app.models.question_validation import QuestionSchema
 from app.services.llm_service import llm
 import json
 from datetime import datetime
+from app.models_db.user import User
 
 assessment_router = APIRouter(
     prefix="/assessments",
@@ -985,3 +986,114 @@ async def get_attempt_result(
         )
 
 
+@assessment_router.get(
+    "/{assessment_id}/results"
+)
+async def get_assessment_results(
+    assessment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(
+        require_roles(["admin", "recruiter"])
+    )
+):
+    try:
+        assessment = await db.get(
+            Assessment,
+            assessment_id
+        )
+        if not assessment:
+            raise HTTPException(
+                status_code=404,
+                detail="Assessment not found"
+            )
+
+        job = await db.get(
+            Job,
+            assessment.job_id
+        )
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found"
+            )
+        if (
+            current_user["role"] != "admin"
+            and job.created_by
+            != current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        result = await db.execute(
+            select(
+                CandidateAttempt,
+                User
+            )
+            .join(
+                Application,
+                CandidateAttempt.application_id
+                == Application.id
+            )
+            .join(
+                User,
+                Application.user_id
+                == User.id
+            )
+            .where(
+                CandidateAttempt.assessment_id
+                == assessment_id
+            )
+            .order_by(
+                CandidateAttempt.percentage.desc()
+            )
+        )
+
+        rows = result.all()
+
+        rankings = []
+
+        rank = 1
+
+        for attempt, user in rows:
+
+            rankings.append(
+                {
+                    "rank": rank,
+                    "candidate_id": user.id,
+                    "candidate_name": user.name,
+                    "candidate_email": user.email,
+                    "score": attempt.total_score,
+                    "percentage": attempt.percentage,
+                    "passed": attempt.passed,
+                    "status": attempt.status,
+                    "completed_at":
+                        attempt.completed_at
+                }
+            )
+
+            rank += 1
+
+        return {
+            "assessment_id":
+                assessment.id,
+
+            "total_candidates":
+                len(rankings),
+
+            "results":
+                rankings
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Failed to fetch results: "
+                f"{str(e)}"
+            )
+        )
