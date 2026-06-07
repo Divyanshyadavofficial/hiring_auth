@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped,mapped_column,relationship
-from sqlalchemy import ForeignKey,Integer,Text,String,Float
+from sqlalchemy import ForeignKey,Integer,Text,String,Float,Boolean
 from app.models_db.base import Base
 from datetime import datetime
 from sqlalchemy import DateTime
@@ -44,6 +44,15 @@ class CandidateAttempt(Base):
     status: Mapped[str] = mapped_column(
         String,
         default="in_progress"
+    )
+    passed: Mapped[bool] = mapped_column(
+
+        Boolean,
+
+        default=False,
+
+        nullable=False
+
     )
 
     answers = relationship(

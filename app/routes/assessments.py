@@ -1,9 +1,9 @@
 from fastapi import APIRouter,Depends,HTTPException
-from sqlalchemy import select
+from sqlalchemy import select,func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.assessment import SubmitAnswerRequest
 from app.models_db.assessment_question import AssessmentQuestion
-from app.models_db.AssessmentBlueprint import Assessment
+from app.models_db.AssessmentBlueprint import Assessment,AssessmentBlueprint
 from app.models_db.job import Job
 from app.models_db.application import Application
 from app.models_db.candidate_attempt import CandidateAttempt
@@ -14,6 +14,7 @@ from app.models.question_review import QuestionReviewRequest
 from app.models.question_validation import QuestionSchema
 from app.services.llm_service import llm
 import json
+from datetime import datetime
 
 assessment_router = APIRouter(
     prefix="/assessments",
@@ -728,3 +729,259 @@ async def question_submit(
             detail=f"Answer submission failed: "
             f"{str(e)}"
         )
+    
+
+@assessment_router.post(
+        "/attempts/{attempt_id/finish}"
+)
+async def finish_assessment(
+    attempt_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["candidate"])
+    )
+
+):
+    try:
+        attempt = await db.get(
+            CandidateAttempt,
+            attempt_id
+        )
+        if not attempt:
+            raise HTTPException(
+                status_code=404,
+                detail="Attempt not found"
+            )
+        
+        application = await db.get(
+            Application,
+            attempt.application_id
+        )
+
+        if not application:
+            raise HTTPException(
+                status_code=404,
+                detail= "Application not found"
+            )
+        if(
+            application.user_id!=current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        if attempt.status !="in_progress":
+            raise HTTPException(
+                status_code=400,
+                detail="Assessment already completed"
+            )
+        score_result = await db.execute(
+            select(
+                func.sum(
+                    CandidateAnswer.obtained_marks
+                ).where(
+                    CandidateAnswer.attempt_id == attempt_id
+                )
+            )
+        )
+        total_score = score_result.scalar() or 0
+
+        marks_result = await db.execute(
+            select(
+                func.sum(
+                    AssessmentQuestion.marks
+                )
+            ).where(
+                AssessmentQuestion.assessment_id == attempt.assessment_id
+            )
+        )
+        
+        total_possible_marks = marks_result.scalar() or 0
+
+        if total_possible_marks ==0:
+            raise HTTPException(
+                status_code=400,
+                detail="Assessment has no marks"
+            )
+        
+        percentage = round(
+            (
+                total_score/total_possible_marks
+            )*100,
+            2
+        )
+
+        assessment = await db.get(
+            Assessment,
+            attempt.assessment_id
+        )
+
+        if not assessment:
+            raise HTTPException(
+                status_code=404,
+                detail="Assessment not found"
+            )
+        blueprint = await db.get(
+            AssessmentBlueprint,
+            assessment.blueprint_id
+        )
+
+        if not blueprint:
+            raise HTTPException(
+                status_code=404,
+                detail="Blueprint not found"
+            )
+        
+        passed = percentage>=blueprint.passing_score_percentage
+        attempt.total_score = total_score
+        attempt.percentage = percentage
+        attempt.passed = passed
+        attempt.completed_at = datetime.utcnow()
+        attempt.status = "completed"
+        await db.commit()
+
+        return {
+            "message":
+                "Assessment completed successfully",
+            "attempt_id":
+                attempt_id,
+            "total_score":
+                total_score,
+            "total_possible_marks":
+                total_possible_marks,
+            "percentage":
+                percentage,
+            "passing_score":
+                blueprint.passing_score_percentage,
+            "passed":
+            attempt.passed
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Failed to finish assessment: "
+                f"{str(e)}"
+            )
+        )
+    
+
+@assessment_router.get("/attempts/{attempt_id}/result")
+async def get_attempt_result(
+    attempt_id:int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["candidate"])
+    )
+):
+    try:
+        attempt = await db.get(
+            CandidateAttempt,
+            attempt_id
+        )
+        if not attempt:
+            raise HTTPException(
+                status_code=404,
+                detail="Attempt not found"
+            )
+        application = await db.get(
+            Application,
+            attempt.application_id
+        )
+
+        if not application:
+            raise HTTPException(
+                status_code=404,
+                detail="Application not found"
+            )
+        
+        if(application.user_id != current_user["user_id"]):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        if attempt.status!="completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Assessment not completed yet"
+            )
+        result = await db.execute(
+
+        select(CandidateAnswer).where(
+
+            CandidateAnswer.attempt_id == attempt.id
+
+        )
+
+        )
+
+        answers = result.scalars().all()
+
+        correct_answers = sum(
+
+            1
+
+                for answer in answers
+
+                if answer.is_correct
+
+        )
+
+        total_attempted = len(answers)
+        assessment = await db.get(
+            Assessment,
+            attempt.assessment_id
+        )
+        if not assessment:
+            raise HTTPException(
+                status_code=404,
+                detail="Assessment not found"
+        )
+        blueprint = await db.get(
+            AssessmentBlueprint,
+            assessment.blueprint_id
+        )
+        if not blueprint:
+            raise HTTPException(
+                status_code=404,
+                detail="Blueprint not found"
+            )
+        questions_result = await db.execute(
+            select(AssessmentQuestion).where(
+            AssessmentQuestion.assessment_id
+            == attempt.assessment_id
+            )
+        )
+
+        total_questions = len(
+        questions_result.scalars().all()
+        )
+
+        return {
+            "attempt_id": attempt.id,
+            "assessment_id": attempt.assessment_id,
+            "total_score": attempt.total_score,
+            "percentage": attempt.percentage,
+            "passing_score":
+                blueprint.passing_score_percentage,
+            "passed": attempt.passed,
+            "total_questions":total_questions,
+            "questions_attempted": total_attempted,
+            "correct_answers":correct_answers,
+            "incorrect_answers":total_attempted - correct_answers,
+            "started_at": attempt.started_at,
+            "completed_at": attempt.completed_at
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch result: {str(e)}"
+        )
+
+
