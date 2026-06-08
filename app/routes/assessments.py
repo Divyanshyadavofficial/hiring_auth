@@ -17,6 +17,10 @@ import json
 from datetime import datetime
 from app.models_db.user import User
 
+from app.services.explainability_service import (
+    generate_assessment_feedback
+)
+
 assessment_router = APIRouter(
     prefix="/assessments",
     tags=["Assessments"]
@@ -733,7 +737,7 @@ async def question_submit(
     
 
 @assessment_router.post(
-        "/attempts/{attempt_id/finish}"
+        "/attempts/{attempt_id}/finish"
 )
 async def finish_assessment(
     attempt_id: int,
@@ -776,14 +780,56 @@ async def finish_assessment(
                 status_code=400,
                 detail="Assessment already completed"
             )
+        
+        answered_result = await db.execute(
+            select(
+                func.count(
+                    CandidateAnswer.id
+                )
+            ).where(
+                CandidateAnswer.attempt_id
+                == attempt_id
+            )
+        )
+
+        answered_count = (
+            answered_result.scalar() or 0
+        )
+
+        questions_result = await db.execute(
+            select(
+                func.count(
+                    AssessmentQuestion.id
+                )
+            ).where(
+                AssessmentQuestion.assessment_id
+                == attempt.assessment_id
+            )
+        )
+
+        total_questions = (
+            questions_result.scalar() or 0
+        )
+
+        if answered_count < total_questions:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Assessment incomplete. "
+                    f"Answered {answered_count} of "
+                    f"{total_questions} questions."
+                )
+            )
+
         score_result = await db.execute(
             select(
                 func.sum(
                     CandidateAnswer.obtained_marks
-                ).where(
+                )
+            ).where(
                     CandidateAnswer.attempt_id == attempt_id
                 )
-            )
+            
         )
         total_score = score_result.scalar() or 0
 
@@ -840,6 +886,16 @@ async def finish_assessment(
         attempt.completed_at = datetime.utcnow()
         attempt.status = "completed"
         await db.commit()
+        await db.refresh(attempt)
+
+        try:
+            await generate_assessment_feedback(
+                attempt.id,db
+            )
+        except Exception as e:
+            print(
+                f"Feedback generation failed: {str(e)}"
+            )
 
         return {
             "message":
