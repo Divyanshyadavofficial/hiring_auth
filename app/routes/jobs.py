@@ -2,15 +2,15 @@ from fastapi import APIRouter,Depends,HTTPException
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy import select
+from sqlalchemy import select,func
 from app.db import get_db
 from app.models_db.job import Job
 from app.models_db.job_skill import JobSkill
 from app.models_db.user import User
 from app.models_db.application import Application
-from app.models.job import   JobCreate,JobResponse,JobCreateResponse,ApplyJobResponse,JobApplicationResponse,SkillReviewRequest
-
-
+from app.models.job import   JobCreate,JobResponse,JobCreateResponse,ApplyJobResponse,JobApplicationResponse,SkillReviewRequest,JobDashboardResponse
+from app.models_db.AssessmentBlueprint import Assessment
+from app.models_db.candidate_attempt import CandidateAttempt
 from app.utils.dependencies import require_roles
 
 from app.services.embedding_service import generate_embedding
@@ -288,9 +288,187 @@ async def get_job_applications(
             "candidate_name": user.name,
             "candidate_email": user.email,
             "match_score":app.match_score,
-            "resume_url":user.resume_url
+            "resume_url":user.resume_url,
+            "shortlist_status": app.shortlist_status,
+            "recruiter_notes": app.recruiter_notes
         }
         for app, user in result.all()
     ]
 
     return data
+
+
+@jobs_router.get(
+    "/{job_id}/dashboard",
+    response_model=JobDashboardResponse
+)
+async def get_job_dashboard(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","recruiter"])
+    )
+):
+    try:
+        job = await db.get(Job,job_id)
+
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail= "Job not found"
+            )
+        if(
+            current_user["role"] != "admin" and job.created_by
+            != current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        total_applications = await db.scalar(
+            select(func.count(Application.id))
+            .where(Application.job_id == job_id)
+        ) or 0
+        assessment_result = await db.execute(
+            select(Assessment.id)
+            .where(Assessment.job_id == job_id)
+        )
+        assessment = assessment_result.scalar_one_or_none()
+
+        assessment_completed = 0
+        passed_candidates = 0
+        failed_candidates = 0
+        average_score = 0.0
+
+        if assessment:
+            assessment_completed = await db.scalar(
+                select(
+                        func.count(
+                            CandidateAttempt.id
+                        )
+                    ).where(
+                        CandidateAttempt.assessment_id
+                        == assessment,
+                        CandidateAttempt.status
+                        == "completed"
+                    )
+                )or 0
+            
+            passed_candidates = (
+                await db.scalar(
+                    select(
+                        func.count(
+                            CandidateAttempt.id
+                        )
+                    ).where(
+                        CandidateAttempt.assessment_id
+                        == assessment,
+                        CandidateAttempt.passed
+                        == True
+                    )
+                )
+                or 0
+            )
+            failed_candidates = (
+                await db.scalar(
+                    select(
+                        func.count(
+                            CandidateAttempt.id
+                        )
+                    ).where(
+                        CandidateAttempt.assessment_id
+                        == assessment,
+                        CandidateAttempt.passed
+                        == False,
+                        CandidateAttempt.status
+                        == "completed"
+                    )
+                )
+                or 0
+            )
+            average_score = (
+                await db.scalar(
+                    select(
+                        func.avg(
+                            CandidateAttempt.percentage
+                        )
+                    ).where(
+                        CandidateAttempt.assessment_id
+                        == assessment,
+                        CandidateAttempt.status
+                        == "completed"
+                    )
+                )
+                or 0.0
+            )
+
+        shortlisted_candidates = (
+            await db.scalar(
+                select(
+                    func.count(
+                        Application.id
+                    )
+                ).where(
+                    Application.job_id == job_id,
+                    Application.shortlist_status
+                    == "shortlisted"
+                )
+            )
+            or 0
+        )
+        interview_candidates = (
+            await db.scalar(
+                select(
+                    func.count(
+                        Application.id
+                    )
+                ).where(
+                    Application.job_id == job_id,
+                    Application.shortlist_status
+                    == "interview"
+                )
+            )
+            or 0
+        )
+        hired_candidates = (
+            await db.scalar(
+                select(
+                    func.count(
+                        Application.id
+                    )
+                ).where(
+                    Application.job_id == job_id,
+                    Application.shortlist_status
+                    == "hired"
+                )
+            )
+            or 0
+        )
+        return {
+            "job_id": job.id,
+            "job_title": job.title,
+            "total_applications":
+                total_applications,
+            "assessment_completed":
+                assessment_completed,
+            "passed_candidates":
+                passed_candidates,
+            "failed_candidates":
+                failed_candidates,
+            "shortlisted_candidates":
+                shortlisted_candidates,
+            "interview_candidates":
+                interview_candidates,
+            "hired_candidates":
+                hired_candidates,
+            "average_score":
+                round(average_score, 2)
+        }
+            
+    except HTTPException:
+        raise 
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dashboard fetch failed:{str(e)}"
+        )

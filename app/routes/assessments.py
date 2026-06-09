@@ -16,7 +16,7 @@ from app.services.llm_service import llm
 import json
 from datetime import datetime
 from app.models_db.user import User
-
+from app.models_db.assessmentFeedback import AssessmentFeedback
 from app.services.explainability_service import (
     generate_assessment_feedback
 )
@@ -1084,7 +1084,9 @@ async def get_assessment_results(
         result = await db.execute(
             select(
                 CandidateAttempt,
-                User
+                User,
+                AssessmentFeedback
+                
             )
             .join(
                 Application,
@@ -1096,9 +1098,14 @@ async def get_assessment_results(
                 Application.user_id
                 == User.id
             )
+            .outerjoin(
+                AssessmentFeedback,
+                AssessmentFeedback.attempt_id == CandidateAttempt.id
+            )
             .where(
                 CandidateAttempt.assessment_id
-                == assessment_id
+                == assessment_id,
+                CandidateAttempt.status =="completed"
             )
             .order_by(
                 CandidateAttempt.percentage.desc()
@@ -1111,7 +1118,7 @@ async def get_assessment_results(
 
         rank = 1
 
-        for attempt, user in rows:
+        for attempt, user,feedback in rows:
 
             rankings.append(
                 {
@@ -1124,22 +1131,80 @@ async def get_assessment_results(
                     "passed": attempt.passed,
                     "status": attempt.status,
                     "completed_at":
-                        attempt.completed_at
+                        attempt.completed_at,
+                    "recommendation":
+                        (
+                            feedback.recommendation
+                            if feedback
+                            else None
+                        ),
+                    "confidence_score":
+                        (
+                            feedback.confidence_score
+                            if feedback
+                            else None
+                        )
+
                 }
             )
 
             rank += 1
+            passed_count = sum(
 
-        return {
-            "assessment_id":
-                assessment.id,
+            1
 
-            "total_candidates":
-                len(rankings),
+            for item in rankings
 
-            "results":
-                rankings
-        }
+            if item["passed"]
+
+            )
+
+            average_percentage = (
+
+                round(
+
+                    sum(
+
+                        item["percentage"]
+
+                        for item in rankings
+
+                    ) / len(rankings),
+
+                    2
+
+                )
+
+                if rankings
+
+                else 0
+
+            )
+
+            return {
+                "assessment_id":
+                    assessment.id,
+
+                "assessment_status":
+                    assessment.status,
+
+                "total_candidates":
+                    len(rankings),
+                "passed_candidates":
+                    passed_count,
+                "failed_candidates":
+
+                    len(rankings)
+
+                    - passed_count,
+
+                "average_percentage":
+
+                    average_percentage,
+
+                "results":
+                    rankings
+            }
 
     except HTTPException:
         raise

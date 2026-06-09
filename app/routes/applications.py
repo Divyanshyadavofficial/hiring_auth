@@ -16,6 +16,8 @@ from app.models.applications import (
     CandidateDashboardResponse
 )
 
+from app.models.applications import ShortlistRequest
+
 applications_router = APIRouter(
     prefix="/applications",
     tags=["Applications"]
@@ -88,7 +90,8 @@ async def get_my_applications(
         {
             "application_id": app.id,
             "job_title": job.title,
-            "status": app.status
+            "status": app.status,
+            "shortlist_status":app.shortlist_status
         }
         for app, job in result.all()
     ]
@@ -143,6 +146,70 @@ async def update_application_status(
 
     return application
 
+
+@applications_router.patch(
+        "/{application_id}/shortlist"
+)
+async def shortlist_candidate(
+    application_id: int,
+    data:ShortlistRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","recruiter"])
+    )
+
+):
+    application = await db.get(
+        Application,application_id
+    )
+    if not application:
+        raise HTTPException(
+            status_code=404,
+            detail="Application not found"
+        )
+    job = await db.get(
+        Job,
+        application.job_id
+    )
+
+    if not job: 
+        raise HTTPException(
+            status_code=404,
+            detail= "Job not found"
+        )
+    if(current_user["role"]!="admin"and 
+       job.created_by!=current_user["user_id"]):
+        raise HTTPException(
+            status_code=403,
+            detail="Not allowed"
+        )
+    application.shortlist_status = data.status
+    application.recruiter_notes = data.notes
+
+    await db.commit()
+    await db.refresh(application)
+
+    return{
+        "message":
+
+            "Candidate shortlist status updated",
+
+        "application_id":
+
+            application.id,
+
+        "candidate_id":
+
+            application.user_id,
+
+        "shortlist_status":
+
+            application.shortlist_status,
+
+        "recruiter_notes":
+
+            application.recruiter_notes
+    }
 
 # ==================================================
 # Admin View All Applications

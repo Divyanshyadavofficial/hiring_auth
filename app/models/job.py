@@ -28,6 +28,8 @@ class JobApplicationResponse(BaseModel):
     candidate_email: EmailStr
     match_score: float
     resume_url: str | None
+    shortlist_status: str
+    recruiter_notes: str | None = None
 
 
 class SkillReview(BaseModel):
@@ -42,3 +44,21 @@ class SkillReview(BaseModel):
 
 class SkillReviewRequest(BaseModel):
     skills: list[SkillReview]
+
+from pydantic import BaseModel
+
+class JobDashboardResponse(BaseModel):
+    job_id: int
+    job_title: str
+
+    total_applications: int
+    assessment_completed: int
+
+    passed_candidates: int
+    failed_candidates: int
+
+    shortlisted_candidates: int
+    interview_candidates: int
+    hired_candidates: int
+
+    average_score: float
