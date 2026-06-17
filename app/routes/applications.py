@@ -18,6 +18,9 @@ from app.models.applications import (
 
 from app.models.applications import ShortlistRequest
 
+from app.models.interview import InterviewCreateRequest,InterviewResposnse
+from app.models_db.interview import Interview
+
 applications_router = APIRouter(
     prefix="/applications",
     tags=["Applications"]
@@ -235,3 +238,70 @@ async def get_all_applications(
         }
         for app, user, job in result.all()
     ]
+
+@applications_router.post("/{application_id}/interviews",response_model=InterviewResposnse
+)
+async def schedule_interview(
+    application_id:int,
+    payload: InterviewCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","recruiter"])
+    )
+    
+):
+    application = await db.get(
+        Application,
+        application_id
+    )
+    if not application:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+    
+    job = await db.get(
+        Job,
+        application.job_id
+    )
+
+    if not job: 
+        raise HTTPException(
+            status_code=404,
+            detail= "job not found"
+        )
+    
+    if(
+        current_user["role"]!="admin" and job.created_by!=current_user["user_id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Not allowed"
+        )
+    
+    if application.shortlist_status not in [
+        "shortlisted",
+        "interview"
+    ]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Candidate must be shortlisted "
+                "before scheduling interview"
+            )
+        )
+    interview = Interview(
+        application_id=application.id,
+        interviewer_id = payload.interviewer_id,
+        round_number=payload.round_number,
+        scheduled_at = payload.scheduled_at,
+        meeting_link=payload.meeting_link,
+        status="scheduled"
+    )
+
+    db.add(interview)
+    application.shortlist_status = "interview"
+    await db.commit()
+    await db.refresh(interview)
+
+    return interview
