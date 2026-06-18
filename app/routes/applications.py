@@ -13,13 +13,16 @@ from app.utils.dependencies import require_roles
 from app.models.applications import (
     ApplicationResponse,
     ApplicationStatusUpdate,
-    CandidateDashboardResponse
+    CandidateDashboardResponse,
+    HiringDecisionRequest
+
 )
 
 from app.models.applications import ShortlistRequest
 
 from app.models.interview import InterviewCreateRequest,InterviewResposnse
 from app.models_db.interview import Interview
+from datetime import datetime,timezone
 
 applications_router = APIRouter(
     prefix="/applications",
@@ -250,58 +253,213 @@ async def schedule_interview(
     )
     
 ):
-    application = await db.get(
-        Application,
-        application_id
-    )
-    if not application:
-        raise HTTPException(
-            status_code=404,
-            detail="Job not found"
+    try:
+        application = await db.get(
+            Application,
+            application_id
         )
-    
-    job = await db.get(
-        Job,
-        application.job_id
-    )
-
-    if not job: 
-        raise HTTPException(
-            status_code=404,
-            detail= "job not found"
-        )
-    
-    if(
-        current_user["role"]!="admin" and job.created_by!=current_user["user_id"]
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Not allowed"
-        )
-    
-    if application.shortlist_status not in [
-        "shortlisted",
-        "interview"
-    ]:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Candidate must be shortlisted "
-                "before scheduling interview"
+        if not application:
+            raise HTTPException(
+                status_code=404,
+                detail="application not found"
             )
+    
+        job = await db.get(
+            Job,
+            application.job_id
         )
-    interview = Interview(
-        application_id=application.id,
-        interviewer_id = payload.interviewer_id,
-        round_number=payload.round_number,
-        scheduled_at = payload.scheduled_at,
-        meeting_link=payload.meeting_link,
-        status="scheduled"
+
+        if not job: 
+            raise HTTPException(
+                status_code=404,
+                detail= "job not found"
+            )
+    
+        if(
+            current_user["role"]!="admin" and job.created_by!=current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+    
+        if application.shortlist_status not in [
+            "shortlisted",
+            "interview"
+        ]:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Candidate must be shortlisted "
+                    "before scheduling interview"
+                )
+            )
+        
+        if application.status =="rejected":
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot schedule interview for " \
+                "rejected candidates"
+            )
+        
+
+        
+        existing_result = await db.execute(
+
+            select(Interview).where(
+
+                Interview.application_id == application.id,
+
+             Interview.round_number == payload.round_number
+
+            )
+
+        )
+        existing_interview = (
+            existing_result.scalar_one_or_none()
+        )
+
+        if existing_interview:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Round {payload.round_number} "
+                    "already exists"
+                )
+            )
+        interviewer = await db.get(
+            User,
+            payload.interviewer_id
+        )
+
+        if not interviewer:
+            raise HTTPException(
+                status_code=404,
+                detail="Interviewer not found"
+            )
+    
+        if interviewer.role not in ["recruiter","admin"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid interviewer"
+            )
+        if payload.scheduled_at < datetime.now(timezone.utc):
+
+            raise HTTPException(
+
+                status_code=400,
+
+                detail="Interview time must be in future"
+
+            )
+
+        interview = Interview(
+            application_id=application.id,
+            interviewer_id = payload.interviewer_id,
+            round_number=payload.round_number,
+            scheduled_at = payload.scheduled_at,
+            meeting_link=payload.meeting_link,
+            status="scheduled"
+        )
+
+
+        db.add(interview)
+        application.status = "accepted"
+        application.shortlist_status = "interview"
+        await db.commit()
+        await db.refresh(interview)
+        return interview
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to schedule interview: {str(e)}"
+        )
+    
+@applications_router.patch("/{application_id}/hire")
+async def hiring_decision(
+    application_id:int,
+    payload: HiringDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","recruiter"])
     )
+):
+    try:
+        application = await db.get(
+            Application,
+            application_id
+        )
 
-    db.add(interview)
-    application.shortlist_status = "interview"
-    await db.commit()
-    await db.refresh(interview)
+        if not application:
+            raise HTTPException(
+                status_code=404,
+                detail="Application not found"
+            )
+        job = await db.get(
+            Job,
+            application.job_id
+        )
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found"
+            )
+        
+        if(
+            current_user["role"]!="admin"and 
+            job.created_by!=current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        if application.shortlist_status !="interview":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Candidate has not completed "
+                    "interview process"
+                )
+            )
+        if payload.decision =="hired":
+            application.status = "accepted"
+            application.shortlist_status = "hired"
+        else: 
+            application.status = "rejected"
+            application.shortlist_status = "rejected"
+        application.recruiter_notes = (
+            payload.notes
+        )
+        await db.commit()
+        await db.refresh(
+            application
+        )
+        return {
+            "message":
+                "Hiring decision updated",
+            "application_id":
+                application.id,
+            "candidate_id":
+                application.user_id,
+            "decision":
+                payload.decision,
+            "status":
+                application.status
+        }
 
-    return interview
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Failed to update decision: "
+                f"{str(e)}"
+            )
+
+        )
+

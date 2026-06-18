@@ -21,6 +21,13 @@ from app.services.matching_service import calculate_match_score
 
 from app.vector_db.chroma_client import get_job_collection
 
+from app.models_db.interview import (
+    Interview,
+    InterviewFeedback
+)
+from app.models_db.candidate_attempt import CandidateAttempt
+from app.models_db.AssessmentBlueprint import Assessment
+
 jobs_router = APIRouter( prefix="/jobs",tags=["Jobs"])
 
 
@@ -471,4 +478,146 @@ async def get_job_dashboard(
         raise HTTPException(
             status_code=500,
             detail=f"Dashboard fetch failed:{str(e)}"
+        )
+    
+
+@jobs_router.get("/{job_id}/final-ranking")
+async def get_final_ranking(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","recruiter"])
+    )
+):
+    try: 
+        job = await db.get(Job,job_id)
+
+        if not job: 
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found"
+            )
+        if(
+            current_user["role"]!="admin"and 
+            job.created_by!=current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        result = await db.execute(
+            select(
+                Application,
+                User
+            )
+            .join(
+                User,
+                Application.user_id == User.id
+            )
+            .where(
+                Application.job_id == job_id
+            )
+        )
+
+        rows = result.all()
+
+        rankings = []
+
+        for application,user in rows:
+            attempt_result = await db.execute(
+                select(CandidateAttempt)
+                .join(
+                    Assessment,
+                    CandidateAttempt.assessment_id == Assessment.id
+                )
+                .where(
+                    CandidateAttempt.application_id == application.id,
+                    CandidateAttempt.status =="completed"
+                )
+            )
+            attempt = attempt_result.scalar_one_or_none()
+            assessment_score = (attempt.percentage
+            if attempt else 0
+            )
+
+            feedback_result = await db.execute(
+                select(
+                    func.avg(
+                        (
+                            InterviewFeedback.technical_score +
+                            InterviewFeedback.communication_score +
+                            InterviewFeedback.problem_solving_score
+
+                        )/3
+                    )
+                )
+                .join(
+                    Interview,
+                    InterviewFeedback.interview_id == Interview.id
+                ).where(
+                    Interview.application_id == application.id
+                )
+            )
+            interview_score = (
+                feedback_result.scalar() or 0
+            )
+
+            final_score = round(
+                (
+                    assessment_score * 0.6
+                    +
+                    interview_score * 0.4
+
+                ),
+                2
+            )
+
+            rankings.append(
+                {
+                    "candidate_id": user.id,
+                    "candidate_name": user.name,
+                    "candidate_email": user.email,
+                    "assessment_score":
+                        assessment_score,
+                    "interview_score":
+                        round(interview_score, 2),
+                    "final_score":
+                        final_score,
+                    "shortlist_status":
+                        application.shortlist_status
+                }
+            )
+        rankings.sort(
+            key=lambda x:x["final_score"],
+            reverse=True
+        )
+        for idx,candidate in enumerate(
+            rankings,
+            start=1
+        ):
+            candidate["rank"] = idx
+        return {
+            "job_id":job.id,
+            "job_title":job.title,
+            "total_candidates":len(rankings),
+            "rankings":rankings
+        }
+    except HTTPException:
+
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+
+            status_code=500,
+
+            detail=(
+
+                f"Failed to generate ranking: "
+
+                f"{str(e)}"
+
+            )
+
         )

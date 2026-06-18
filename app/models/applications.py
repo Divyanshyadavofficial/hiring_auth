@@ -36,3 +36,12 @@ class ShortlistRequest(BaseModel):
         "hired"
     ]
     notes:str | None = None
+
+
+
+class HiringDecisionRequest(BaseModel):
+    decision: Literal[
+        "hired",
+        "rejected"
+    ]
+    notes: str | None = None

@@ -24,6 +24,9 @@ class InterviewFeedbackRequest(BaseModel):
     technical_score: float
     communication_score: float
     problem_solving_score: float
+    strengths: str
+    weaknesses: str
+    recommendation: str
 
     recommendation: Literal[
         "strong_hire",
