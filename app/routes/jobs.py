@@ -27,6 +27,7 @@ from app.models_db.interview import (
 )
 from app.models_db.candidate_attempt import CandidateAttempt
 from app.models_db.AssessmentBlueprint import Assessment
+from app.models_db.offer import Offer
 
 jobs_router = APIRouter( prefix="/jobs",tags=["Jobs"])
 
@@ -621,3 +622,231 @@ async def get_final_ranking(
             )
 
         )
+
+
+
+
+@jobs_router.get("/{job_id}/offers")
+async def get_job_offers(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(
+        require_roles(["admin","recruiter"])
+    )
+):
+    try:
+        job = await db.get(Job, job_id)
+
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found"
+            )
+
+        if (
+            current_user["role"] != "admin"
+            and job.created_by != current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+
+        result = await db.execute(
+            select(
+                Offer,
+                Application,
+                User
+            )
+            .join(
+                Application,
+                Offer.application_id ==
+                Application.id
+            )
+            .join(
+                User,
+                Application.user_id ==
+                User.id
+            )
+            .where(
+                Application.job_id == job_id
+            )
+        )
+
+        rows = result.all()
+
+        return [
+            {
+                "offer_id": offer.id,
+                "candidate_id": user.id,
+                "candidate_name": user.name,
+                "candidate_email": user.email,
+                "salary": offer.salary,
+                "joining_date":
+                    offer.joining_date,
+                "status": offer.status,
+                "created_at":
+                    offer.created_at
+            }
+            for offer, app, user in rows
+        ]
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"failed to fetch offers"
+            f"{str(e)}"
+        )
+    
+
+
+@jobs_router.get(
+
+    "/{job_id}/offer-stats"
+
+)
+
+async def get_offer_stats(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(
+        require_roles(["admin","recruiter"])
+    )
+
+):
+    try:
+        job = await db.get(Job, job_id)
+
+        if not job:
+
+            raise HTTPException(
+
+                status_code=404,
+
+                detail="Job not found"
+
+            )
+
+        if (
+
+            current_user["role"] != "admin"
+
+            and job.created_by != current_user["user_id"]
+
+        ):
+
+            raise HTTPException(
+
+                status_code=403,
+
+                detail="Not allowed"
+
+            )
+
+        result = await db.execute(
+
+            select(
+
+                func.count(Offer.id)
+
+                .label("total"),
+
+                func.count()
+
+                .filter(
+
+                    Offer.status == "pending"
+
+                )
+
+                .label("pending"),
+
+                func.count()
+
+                .filter(
+
+                    Offer.status == "accepted"
+
+                )
+
+                .label("accepted"),
+
+                func.count()
+
+                .filter(
+
+                    Offer.status == "declined"
+
+                )
+
+                .label("declined"),
+
+                func.count()
+
+                .filter(
+
+                    Offer.status == "withdrawn"
+
+                )
+
+                .label("withdrawn")
+
+            )
+
+            .join(
+
+                Application,
+
+                Offer.application_id ==
+
+                Application.id
+
+            )
+
+            .where(
+
+                Application.job_id == job_id
+
+            )
+
+        )
+
+        stats = result.one()
+
+        return {
+
+            "job_id": job_id,
+
+            "total_offers":
+
+                stats.total,
+
+            "pending":
+
+                stats.pending,
+
+            "accepted":
+
+                stats.accepted,
+
+            "declined":
+
+                stats.declined,
+
+            "withdrawn":
+
+                stats.withdrawn
+
+        }
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"failed to fetch offer stats"
+            f"{str(e)}"
+        )
+
+
+
