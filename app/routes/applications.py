@@ -17,7 +17,7 @@ from app.models.applications import (
     HiringDecisionRequest
 
 )
-
+from app.services.notification_service import create_notification
 from app.models.applications import ShortlistRequest
 
 from app.models.interview import InterviewCreateRequest,InterviewResposnse
@@ -149,6 +149,24 @@ async def update_application_status(
 
     await db.commit()
     await db.refresh(application)
+    if data.status =="rejected":
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            title="Application Rejected",
+            message=f"Your application for {job.title} was rejected",
+            event_type= "APPLICATION REJECTED"
+        )
+    elif data.status=="accepted":
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            title="Application Accepted",
+            message=f"Your application for {job.title} has moved to the next stage.",
+            event_type="APPLICATION_ACCEPTED"
+
+        )
+    
 
     return application
 
@@ -194,6 +212,15 @@ async def shortlist_candidate(
 
     await db.commit()
     await db.refresh(application)
+    if data.status=="shortlisted":
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            title="Application shortlisted",
+            message=f"Your application for {job.title} has been shortlisted for the next stage.",
+            event_type="SHORTLISTED"
+
+        )
 
     return{
         "message":
@@ -368,6 +395,15 @@ async def schedule_interview(
         application.shortlist_status = "interview"
         await db.commit()
         await db.refresh(interview)
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            event_type="INTERVIEW_SCHEDULED",
+            message=(
+                f"Interview Round "
+                f"{payload.round_number} scheduled"
+            )
+        )
         return interview
     except HTTPException:
         raise
@@ -437,6 +473,17 @@ async def hiring_decision(
         await db.refresh(
             application
         )
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            event_type="HIRED",
+            message=(
+                f"Congratulations! "
+                f"You have been selected for "
+                f"{job.title}"
+            )
+        )
+
         return {
             "message":
                 "Hiring decision updated",

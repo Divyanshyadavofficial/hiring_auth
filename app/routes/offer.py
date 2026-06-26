@@ -16,7 +16,7 @@ from app.models.offer import (
 )
 from datetime import datetime
 from app.utils.dependencies import require_roles
-
+from app.services.notification_service import create_notification
 offer_router = APIRouter(
     prefix="/offers",
     tags=["offers"]
@@ -92,6 +92,15 @@ async def create_offer(
         db.add(offer)
         await db.commit()
         await db.refresh(offer)
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            event_type="OFFER_CREATED",
+            message=(
+                f"An offer has been issued "
+                f"for {job.title}"
+            )
+        )
         return offer
     except HTTPException:
         raise
@@ -213,6 +222,22 @@ async def accept_offer(
         offer.status = "accepted"
         offer.accepted_at = datetime.utcnow()
         await db.commit()
+        application = await db.get(
+        Application,
+        offer.application_id
+        )
+
+        job = await db.get(
+            Job,
+            application.job_id
+        )
+
+        await create_notification(
+            db=db,
+            user_id=job.created_by,
+            event_type="OFFER_ACCEPTED",
+            message="Candidate accepted the offer."
+        )
         return {
             "message":
                 "offer accepted"
@@ -254,6 +279,10 @@ async def decline_offer(
             Application,
             offer.application_id
         )
+        job = await db.get(
+            Job,
+            application.job_id
+        )
 
         if application.user_id != current_user["user_id"]:
             raise HTTPException(
@@ -271,11 +300,18 @@ async def decline_offer(
 
         await db.commit()
 
+        await create_notification(
+            db=db,
+            user_id=job.created_by,
+            event_type="OFFER_DECLINED",
+            message="Candidate declined the offer."
+        )
+
         return {
             "message":
                 "Offer declined"
         }
-    except HTTPException as e:
+    except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
@@ -396,6 +432,12 @@ async def withdraw_offer(
         offer.status = "withdrawn"
 
         await db.commit()
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            event_type="OFFER_WITHDRAWN",
+            message="Offer has been withdrawn."
+        )
 
         return {
             "message":

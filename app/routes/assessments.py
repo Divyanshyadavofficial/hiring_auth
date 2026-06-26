@@ -20,7 +20,7 @@ from app.models_db.assessmentFeedback import AssessmentFeedback
 from app.services.explainability_service import (
     generate_assessment_feedback
 )
-
+from app.services.notification_service import create_notification
 assessment_router = APIRouter(
     prefix="/assessments",
     tags=["Assessments"]
@@ -781,6 +781,12 @@ async def finish_assessment(
                 detail="Assessment already completed"
             )
         
+
+        job = await db.get(
+            Job,
+            application.job_id
+        )
+        
         answered_result = await db.execute(
             select(
                 func.count(
@@ -887,6 +893,26 @@ async def finish_assessment(
         attempt.status = "completed"
         await db.commit()
         await db.refresh(attempt)
+
+
+        assessment = await db.get(
+            Assessment,
+            attempt.assessment_id
+        )
+
+        await create_notification(
+            db=db,
+            user_id=current_user["user_id"],
+            title="Assessment Completed",
+            message=(
+                f"You have successfully completed the assessment for "
+
+                f"{job.title}."
+
+            ),
+            event_type="ASSESSMENT_COMPLETED"
+
+        )
 
         try:
             await generate_assessment_feedback(

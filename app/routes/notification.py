@@ -171,3 +171,4 @@ async def mark_all_notifications_read(
                 f"{str(e)}"
             )
         )
+    

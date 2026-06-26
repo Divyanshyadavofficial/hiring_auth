@@ -28,6 +28,7 @@ from app.models_db.interview import (
 from app.models_db.candidate_attempt import CandidateAttempt
 from app.models_db.AssessmentBlueprint import Assessment
 from app.models_db.offer import Offer
+from app.services.notification_service import create_notification
 
 jobs_router = APIRouter( prefix="/jobs",tags=["Jobs"])
 
@@ -249,6 +250,13 @@ async def apply_job(
         match_score=score
     )
     db.add(application)
+    await create_notification(
+        db=db,
+        user_id= current_user["user_id"],
+        title="Application submitted",
+        message=f"you applied for {job.title}",
+        event_type = "APPLICATION_APPLIED"
+    )
     await db.commit()
     return {
         "message": "Applied successfully",

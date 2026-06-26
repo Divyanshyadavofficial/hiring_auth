@@ -13,6 +13,8 @@ from app.models_db.interview import Interview
 from app.models_db.interview import InterviewFeedback
 from app.models.interview import InterviewFeedbackRequest
 from app.utils.dependencies import require_roles
+from app.models_db.application import Application
+from app.services.notification_service import create_notification
 
 interview_router = APIRouter(
     prefix="/interviews",
@@ -92,6 +94,18 @@ async def submit_feedback(
         db.add(feedback)
 
         interview.status = "completed"
+        application = await db.get(
+        Application,
+        interview.application_id
+        )
+
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            event_type="INTERVIEW_COMPLETED",
+            message="Interview feedback submitted."
+        )
+
 
         await db.commit()
 
