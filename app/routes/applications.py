@@ -6,6 +6,7 @@ from app.db import get_db
 
 from app.models_db.application import Application
 from app.models_db.job import Job
+from app.models_db.offer import Offer
 from app.models_db.user import User
 
 from app.utils.dependencies import require_roles
@@ -17,11 +18,12 @@ from app.models.applications import (
     HiringDecisionRequest
 
 )
+from app.models_db.candidate_attempt import CandidateAttempt
 from app.services.notification_service import create_notification
 from app.models.applications import ShortlistRequest
 
 from app.models.interview import InterviewCreateRequest,InterviewResposnse
-from app.models_db.interview import Interview
+from app.models_db.interview import Interview, InterviewFeedback
 from datetime import datetime,timezone
 
 applications_router = APIRouter(
@@ -209,6 +211,12 @@ async def shortlist_candidate(
         )
     application.shortlist_status = data.status
     application.recruiter_notes = data.notes
+    if data.status == "shortlisted":
+        application.shortlisted_at = datetime.utcnow()
+    elif data.status == "interview":
+        application.interview_started_at = datetime.utcnow()
+    elif data.status == "rejected":
+        application.rejected_at = datetime.utcnow()
 
     await db.commit()
     await db.refresh(application)
@@ -220,6 +228,24 @@ async def shortlist_candidate(
             message=f"Your application for {job.title} has been shortlisted for the next stage.",
             event_type="SHORTLISTED"
 
+        )
+    elif data.status == "interview":
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            title="Interview Stage",
+            message=f"Your application for {job.title} has moved to the interview stage.",
+            event_type="INTERVIEW_SCHEDULED"
+
+        )
+
+    elif data.status == "rejected":
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            title="Application Rejected",
+            message=f"Your application for {job.title} was rejected.",
+            event_type="APPLICATION_REJECTED"
         )
 
     return{
@@ -463,9 +489,11 @@ async def hiring_decision(
         if payload.decision =="hired":
             application.status = "accepted"
             application.shortlist_status = "hired"
+            application.hired_at = datetime.utcnow()
         else: 
             application.status = "rejected"
             application.shortlist_status = "rejected"
+            application.rejected_at = datetime.utcnow()
         application.recruiter_notes = (
             payload.notes
         )
@@ -510,3 +538,183 @@ async def hiring_decision(
 
         )
 
+@applications_router.get("/{application_id}/timeline")
+async def get_timeline(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles(["candidate"]))
+):
+    try:
+        application = await db.get(
+            Application,
+            application_id
+        )
+        if not application:
+            raise HTTPException(
+                status_code=404,
+                detail="Application not found"
+            )
+        if application.user_id!=current_user["user_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        
+        job = await db.get(
+            Job,
+            application.job_id
+        )
+        if not job: 
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found"
+            )
+        timeline = []
+        timeline.append({
+            "event": "APPLICATION_APPLIED",
+            "status":"completed",
+            "timestamp":application.created_at
+        })
+        if application.shortlisted_at: 
+            timeline.append({
+                "event":"SHORTLISTED",
+                "status":"completed",
+                "timestamp": application.shortlisted_at
+            })
+        
+        if application.interview_started_at:
+
+            timeline.append({
+
+                "event": "INTERVIEW_STARTED",
+
+                "status": "completed",
+
+                "timestamp": application.interview_started_at
+            })
+
+        if application.hired_at:
+
+            timeline.append({
+
+                "event": "HIRED",
+
+                "status": "completed",
+
+                "timestamp": application.hired_at
+
+            })
+
+        if application.rejected_at:
+
+            timeline.append({
+
+                "event": "REJECTED",
+
+                "status": "completed",
+
+                "timestamp": application.rejected_at
+
+            })
+        
+        attempt_result = await db.execute(
+            select(CandidateAttempt)
+            .where(
+                CandidateAttempt.application_id ==application.id,
+                CandidateAttempt.status == "completed"
+            )
+        )
+        attempt = attempt_result.scalar_one_or_none()
+        if attempt:
+            timeline.append({
+                "event":"ASSESSMENT_COMPLETED",
+                "status":"completed",
+                "timestamp":attempt.completed_at,
+                "percentage":attempt.percentage,
+                "passed":attempt.passed
+            })
+
+        interview_result = await db.execute(
+            select(Interview)
+            .where(
+                Interview.application_id == application.id
+            )
+        )
+        interview = interview_result.scalar_one_or_none()
+
+        if interview:
+            timeline.append({
+                "event":"INTERVIEW_SCHEDULED",
+                "status": "completed",
+                "timestamp":interview.scheduled_at
+            })
+
+            feedback_result = await db.execute(
+                select(InterviewFeedback)
+                .where(
+                InterviewFeedback.interview_id == interview.id
+                )
+            )
+            feedback = feedback_result.scalar_one_or_none()
+            if feedback:
+                timeline.append({
+                    "event": "INTERVIEW_COMPLETED",
+                    "status": "completed",
+                    "timestamp": feedback.created_at
+                })
+
+        
+        offer_result = await db.execute(
+            select(Offer)
+            .where(
+            Offer.application_id == application.id  
+            )
+        )
+        offer = offer_result.scalar_one_or_none()
+        if offer:
+            timeline.append({
+                "event":"OFFER_CREATED",
+                "status":"completed",
+                "timestamp":offer.created_at
+            })
+        
+            if offer.accepted_at:
+                timeline.append({
+                    "event": "OFFER_ACCEPTED",
+                    "status": "completed",
+                    "timestamp": offer.accepted_at
+                })
+            elif offer.declined_at:
+                timeline.append({
+                    "event": "OFFER_DECLINED",
+                    "status": "completed",
+                    "timestamp": offer.declined_at
+                })
+            elif offer.withdrawn_at:
+                timeline.append({
+                    "event": "OFFER_WITHDRAWN",
+                    "status": "completed",
+                    "timestamp": offer.withdrawn_at
+                })
+        timeline.sort(
+            key=lambda item: item["timestamp"]
+        )
+
+        return {
+            "application_id": application.id,
+            "job_id": job.id,
+            "job_title": job.title,
+            "application_status": application.status,
+            "shortlist_status": application.shortlist_status,
+            "timeline": timeline
+        }     
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"failed to get timeline: "
+            f"{str(e)}"
+        )

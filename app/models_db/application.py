@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Mapped,mapped_column,relationship
 from sqlalchemy import Integer,ForeignKey,String,UniqueConstraint
 from app.models_db.base import Base
-from sqlalchemy import Index,Integer,ForeignKey,String,Float,Text
-
+from sqlalchemy import Index,Integer,ForeignKey,String,Float,Text,DateTime
+from datetime import datetime
 class Application(Base):
     __tablename__ = "applications"
     __table_args__ = (
@@ -23,7 +23,31 @@ class Application(Base):
     recruiter_notes: Mapped[str | None] = mapped_column(
         Text,
         nullable=True
-
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+    shortlisted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    interview_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    hired_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
     )
 
     candidate = relationship("User",back_populates="applications")
