@@ -327,6 +327,7 @@ async def schedule_interview(
                 status_code=404,
                 detail= "job not found"
             )
+        
     
         if(
             current_user["role"]!="admin" and job.created_by!=current_user["user_id"]
@@ -391,7 +392,7 @@ async def schedule_interview(
                 detail="Interviewer not found"
             )
     
-        if interviewer.role not in ["recruiter","admin"]:
+        if interviewer.role !="interviewer":
             raise HTTPException(
                 status_code=400,
                 detail="Invalid interviewer"

@@ -3,6 +3,20 @@ from pydantic import BaseModel
 
 from typing import Literal
 
+
+class InterviewDashboardResponse(BaseModel):
+    interview_id: int
+    application_id: int
+    candidate_id: int
+    candidate_name: str
+    candidate_email: str
+    job_id: int
+    job_title: str
+    round_number: int
+    scheduled_at: datetime
+    meeting_link: str | None
+    status: str
+
 class InterviewCreateRequest(BaseModel):
     interviewer_id : int
     round_number: int =1
