@@ -18,6 +18,8 @@ from app.models.applications import (
     HiringDecisionRequest
 
 )
+from app.services.hiring_recommendation_service import generate_hiring_recommendation
+from app.models.hiring_recommendation import AIHiringRecommendationResponse
 from app.models_db.candidate_attempt import CandidateAttempt
 from app.services.notification_service import create_notification
 from app.models.applications import ShortlistRequest
@@ -718,4 +720,94 @@ async def get_timeline(
             status_code=500,
             detail=f"failed to get timeline: "
             f"{str(e)}"
+        )
+    
+
+@applications_router.get(
+    "/{application_id}/ai-recommendation",
+    response_model=AIHiringRecommendationResponse
+)
+async def get_ai_hiring_recommendation(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","recruiter"])
+    )
+):
+    try:
+
+        application = await db.get(
+
+            Application,
+
+            application_id
+
+        )
+
+        if not application:
+
+            raise HTTPException(
+
+                status_code=404,
+
+                detail="Application not found"
+
+            )
+
+        job = await db.get(
+
+            Job,
+
+            application.job_id
+
+        )
+
+        if not job:
+
+            raise HTTPException(
+
+                status_code=404,
+
+                detail="Job not found"
+
+            )
+
+        if (
+
+            current_user["role"] != "admin"
+
+            and job.created_by != current_user["user_id"]
+
+        ):
+
+            raise HTTPException(
+
+                status_code=403,
+
+                detail="Not allowed"
+
+            )
+
+        recommendation = await generate_hiring_recommendation(
+
+            application_id=application_id,
+
+            db=db
+
+        )
+
+        return recommendation
+
+    except HTTPException:
+
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+
+            status_code=500,
+
+            detail=f"Failed to generate recommendation: {str(e)}"
+
         )

@@ -53,3 +53,9 @@ class Application(Base):
     candidate = relationship("User",back_populates="applications")
     job = relationship("Job",back_populates="applications")
 
+    ai_recommendation = relationship(
+        "AIHiringRecommendation",
+        back_populates="application",
+        uselist=False
+    )
+

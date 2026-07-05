@@ -48,6 +48,14 @@ class Interview(Base):
         String,
         default="scheduled"
     )
+    started_at: Mapped[datetime|None] = mapped_column(
+          DateTime(timezone=True),
+          nullable=True
+    )
+    completed_at: Mapped[datetime|None] = mapped_column(
+          DateTime(timezone=True),
+          nullable=True
+    )
 
 class InterviewFeedback(Base):
         __tablename__ = "interview_feedback"

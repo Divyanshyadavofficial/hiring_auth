@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+from datetime import datetime,timezone
 
 from app.models import interview
 from app.models_db.interview import Interview
@@ -269,7 +270,7 @@ async def submit_feedback(
         )
         db.add(feedback)
 
-        interview.status = "completed"
+        
         application = await db.get(
         Application,
         interview.application_id
@@ -304,4 +305,107 @@ async def submit_feedback(
             status_code=500,
             detail=f"failed to submit feedback: "
             f"{str(e)}"
+        )
+    
+
+@interview_router.patch("/{interview_id}/start")
+async def interview_start(
+    interview_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","interviewer"])
+    )
+):
+    try: 
+        interview = await db.get(
+            Interview,
+            interview_id
+        )
+        if not interview:
+            raise HTTPException(
+                status_code=404,
+                detail="Interview not found"
+            )
+        if (
+            current_user["role"] == "interviewer"
+            and interview.interviewer_id !=current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        if interview.status !="scheduled":
+            raise HTTPException(
+                status_code=400,
+                detail="Interview already started or completed"
+            )
+        interview.status = "in_progress"
+        interview.started_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(interview)
+        return {
+            "message":"Interview started",
+            "status":interview.status,
+            "started_at":interview.started_at
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start interview: {str(e)}"
+        )
+    
+
+
+@interview_router.patch("/{interview_id}/complete")
+async def interview_complete(
+    interview_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(
+        require_roles(["admin","interviewer"])
+    )
+):
+    try: 
+        interview = await db.get(
+            Interview,
+            interview_id
+        )
+        if not interview:
+            raise HTTPException(
+                status_code=404,
+                detail="Interview not found"
+            )
+        if (
+            current_user["role"] == "interviewer"
+            and interview.interviewer_id != current_user["user_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Not allowed"
+            )
+        if interview.status != "in_progress":
+            raise HTTPException(
+                status_code=400,
+                detail="Interview has not started"
+            )
+        interview.status ="completed"
+        interview.completed_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        await db.refresh(interview)
+
+        return {
+            "message": "Interview completed",
+            "status": interview.status,
+            "completed_at": interview.completed_at
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to complete interview: {str(e)}"
         )
