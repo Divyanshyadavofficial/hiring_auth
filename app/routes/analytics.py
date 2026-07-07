@@ -451,9 +451,9 @@ async def interview_analytics(
                 .label("cancelled"),
 
                 func.avg(
-                    InterviewFeedback.overall_rating
+                    InterviewFeedback.overall_score
                 )
-                .label("average_rating")
+                .label("average_score")
             )
             .join(
                 Application,
@@ -477,8 +477,8 @@ async def interview_analytics(
             "scheduled": stats.scheduled,
             "completed": stats.completed,
             "cancelled": stats.cancelled,
-            "average_rating": round(
-                stats.average_rating or 0,
+            "average_score": round(
+                stats.average_score or 0,
                 2
             )
         }

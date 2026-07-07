@@ -208,7 +208,7 @@ async def submit_feedback(
     db: AsyncSession = Depends(get_db),
     current_user = Depends(
         require_roles(
-            ["admin","recruiter"]
+            ["admin","recruiter","interviewer"]
         )
     )
 
@@ -223,15 +223,46 @@ async def submit_feedback(
                 status_code=404,
                 detail="Interview not found"
             )
-        if current_user["role"]!="admin" and interview.interviewer_id!=current_user["user_id"]:
+        
+        application = await db.get(
+            Application,
+            interview.application_id
+        )
+        if not application:
             raise HTTPException(
-                status_code=403,
-                detail="Not allowed"
+                status_code=404,
+                detail="Application not found"
             )
+
+        job = await db.get(
+            Job,
+            application.job_id
+        )
+
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found"
+            )
+        
+        if current_user["role"] == "interviewer":
+            if interview.interviewer_id != current_user["user_id"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Not allowed"
+                )
+        elif current_user["role"] == "recruiter":
+            if job.created_by != current_user["user_id"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Not allowed"
+                )
+        
+        
         if interview.status == "completed":
             raise HTTPException(
                 status_code=400,
-                detail="Feedback already submitted"
+                detail="Interview already submitted"
             )
         existing_result = await db.execute(
             select(InterviewFeedback).where(
@@ -276,17 +307,19 @@ async def submit_feedback(
         interview.application_id
         )
 
-        await create_notification(
-            db=db,
-            user_id=application.user_id,
-            event_type="INTERVIEW_COMPLETED",
-            message="Interview feedback submitted."
-        )
+        
 
 
         await db.commit()
 
         await db.refresh(feedback)
+
+        await create_notification(
+            db=db,
+            user_id=application.user_id,
+            event_type="INTERVIEW_COMPLETED",
+            message=f"Your interview for {job.title} has been completed"
+        )
 
         return {
             "message":
@@ -294,7 +327,7 @@ async def submit_feedback(
             "feedback_id":feedback.id,
             "interview_id":interview_id,
             "overall_score":overall_score,
-            "recommendation": payload.recommendation
+            "recommendation": feedback.recommendation
         }
     except HTTPException:
         raise
